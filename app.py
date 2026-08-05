@@ -715,21 +715,6 @@ def render_global_results(results: dict[str, ExtractionResult] | None) -> None:
         [result_row(result) for result in results.values()],
         use_container_width=True,
         hide_index=True,
-        column_config={
-            "Assureur": st.column_config.TextColumn("Assureur", width="small"),
-            "Fonds": st.column_config.TextColumn("Fonds", width="medium"),
-            "Date de version": st.column_config.TextColumn(
-                "Date de version", width="small"
-            ),
-            "Durée recommandée": st.column_config.TextColumn(
-                "Durée recommandée", width="small"
-            ),
-            "Réduction du rendement": st.column_config.TextColumn(
-                "Réduction du rendement", width="small"
-            ),
-            "Confiance": st.column_config.TextColumn("Confiance", width="small"),
-            "Statut": st.column_config.TextColumn("Statut", width="large"),
-        },
     )
     original_column, highlighted_column = st.columns(2)
     original_column.caption("Document original")
