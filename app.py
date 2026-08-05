@@ -597,7 +597,6 @@ def render_global_tab() -> None:
                         {
                             "Assureur": insurer.label,
                             "Fonds": fund,
-                            "Document": "—",
                             "Date de version": "—",
                             "Durée recommandée": "—",
                             "Réduction du rendement": "—",
@@ -631,7 +630,6 @@ def render_global_tab() -> None:
                     {
                         "Assureur": insurer.label,
                         "Fonds": fund,
-                        "Document": filename,
                         "Date de version": (
                             format_version_date(extraction["version_date"])
                             or "Aucune date trouvée"
