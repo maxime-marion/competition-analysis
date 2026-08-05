@@ -27,7 +27,9 @@ Le site est une application dynamique : Playwright est donc préférable à `req
 
 ## Téléchargement d'un DIC Vivium
 
-Vivium expose directement les PDF dans le HTML de sa page. Aucun navigateur n'est nécessaire :
+Le script Vivium recherche directement le nom du fonds parmi les PDF affichés
+sur la page, sans dépendre d'une rubrique ou d'un accordéon. Aucun navigateur
+n'est nécessaire :
 
 ```bash
 python vivium_download.py

@@ -54,7 +54,7 @@ def first_product(page: Page) -> str:
     values = [value.strip() for value in options.all_inner_texts()]
     product = next((value for value in values if value and value != "Toutes"), None)
     if product is None:
-        raise RuntimeError("Aucun produit n'est proposé pour la catégorie Investissement.")
+        raise RuntimeError("No products are available in the Investment category.")
 
     page.get_by_role("option", name=product, exact=True).click()
     page.get_by_role("button", name=f"{product} Produit", exact=True).wait_for(
@@ -96,14 +96,14 @@ def main() -> None:
             select_value(page, Selection("Type de document", DOCUMENT_TYPE))
 
             titles = document_titles(page)
-            print(f"Produit retenu : {product}")
-            print(f"Documents « {DOCUMENT_TYPE} » ({len(titles)}) :")
+            print(f"Selected product: {product}")
+            print(f"Key Information Documents ({len(titles)}):")
             for title in titles:
                 print(f"- {title}")
         except PlaywrightTimeoutError as error:
             raise RuntimeError(
-                "La page Allianz a changé ou n'a pas fini de charger. "
-                "Vérifiez les libellés des menus et réessayez."
+                "The Allianz page has changed or did not finish loading. "
+                "Check the menu labels and try again."
             ) from error
         finally:
             browser.close()

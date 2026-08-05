@@ -143,7 +143,7 @@ INSURERS = {
     "nn": Insurer(
         label="NN",
         default_fund=NN_DEFAULT_DOCUMENT,
-        source_url="https://www.nn.be/nl/legale-documenten",
+        source_url="https://www.nn.be/fr/documents-legaux",
         downloader=download_nn_document,
     ),
 }
@@ -173,7 +173,7 @@ def parse_fund_csv(content: bytes) -> tuple[list[FundSelection], list[str]]:
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError:
-        return [], ["Le fichier CSV doit être encodé en UTF-8."]
+        return [], ["The CSV file must be UTF-8 encoded."]
 
     try:
         dialect = csv.Sniffer().sniff(text[:4_096], delimiters=",;")
@@ -181,7 +181,7 @@ def parse_fund_csv(content: bytes) -> tuple[list[FundSelection], list[str]]:
         dialect = csv.excel
     reader = csv.DictReader(StringIO(text), dialect=dialect)
     if not reader.fieldnames:
-        return [], ["Le fichier CSV doit contenir une ligne d'en-têtes."]
+        return [], ["The CSV file must contain a header row."]
 
     headers = {
         normalized_text(header): header
@@ -192,8 +192,8 @@ def parse_fund_csv(content: bytes) -> tuple[list[FundSelection], list[str]]:
     fund_header = next((headers[header] for header in CSV_FUND_HEADERS if header in headers), None)
     if not entity_header or not fund_header:
         return [], [
-            "Le CSV doit contenir les colonnes « entity » et « fund name » "
-            "(« name of the fund » est aussi accepté)."
+            "The CSV file must contain the “entity” and “fund name” columns "
+            "(“name of the fund” is also accepted)."
         ]
 
     insurers_by_name = {
@@ -209,18 +209,18 @@ def parse_fund_csv(content: bytes) -> tuple[list[FundSelection], list[str]]:
         if not entity and not fund:
             continue
         if not entity or not fund:
-            errors.append(f"Ligne {row_number} : l'entité et le nom du fonds sont requis.")
+            errors.append(f"Row {row_number}: entity and fund name are required.")
             continue
         match = insurers_by_name.get(normalized_text(entity))
         if not match:
             supported = ", ".join(insurer.label for insurer in INSURERS.values())
-            errors.append(f"Ligne {row_number} : entité « {entity} » inconnue ({supported}).")
+            errors.append(f"Row {row_number}: unknown entity “{entity}” ({supported}).")
             continue
         identifier, insurer = match
         selections.append(FundSelection(f"{identifier}-{row_number}", identifier, insurer, fund))
 
     if not selections and not errors:
-        errors.append("Le fichier CSV ne contient aucun fonds.")
+        errors.append("The CSV file does not contain any funds.")
     selections.sort(
         key=lambda selection: (selection.insurer.label.casefold(), selection.fund.casefold())
     )
@@ -263,7 +263,7 @@ def fetch_pdf(
 ) -> tuple[str, bytes]:
     """Télécharge le PDF dans un dossier temporaire puis retourne ses données."""
     if insurer.downloader is None:
-        raise ValueError(f"Aucun téléchargeur n'est configuré pour {insurer.label}.")
+        raise ValueError(f"No downloader is configured for {insurer.label}.")
     with TemporaryDirectory(prefix="fund-document-") as temporary_directory:
         path = insurer.downloader(
             fund,
@@ -288,7 +288,7 @@ def extract_pdf_text(content: bytes) -> str:
             for page_number, page in enumerate(document, start=1)
         )
     if not text.strip():
-        raise ValueError("Le document ne contient pas de texte exploitable.")
+        raise ValueError("The document does not contain extractable text.")
     return text
 
 
@@ -307,7 +307,7 @@ def parse_version_date_response(response_text: str) -> dict[str, object]:
     cleaned_text = cleaned_text.removesuffix("```").strip()
     data = json.loads(cleaned_text)
     if not isinstance(data, dict):
-        raise ValueError("La réponse du modèle n'est pas un objet JSON.")
+        raise ValueError("The model response is not a JSON object.")
 
     result = {
         field: data.get(field)
@@ -320,15 +320,15 @@ def parse_version_date_response(response_text: str) -> dict[str, object]:
         )
     }
     if result["version_date"] is not None and not isinstance(result["version_date"], str):
-        raise ValueError("La date retournée par le modèle est invalide.")
+        raise ValueError("The date returned by the model is invalid.")
     for field in ("recommended_holding_period_years", "reduction_in_yield_percent"):
         if result[field] is not None and (
             isinstance(result[field], bool) or not isinstance(result[field], (int, float))
         ):
-            raise ValueError(f"La valeur « {field} » retournée par le modèle est invalide.")
+            raise ValueError(f"The value “{field}” returned by the model is invalid.")
     raw_highlights = data.get("source_highlights", [])
     if not isinstance(raw_highlights, list):
-        raise ValueError("Les repères de surlignage retournés par le modèle sont invalides.")
+        raise ValueError("The highlighting references returned by the model are invalid.")
     highlights: list[dict[str, str | int]] = []
     allowed_fields = {"version_date", "holding_period", "reduction_in_yield"}
     for highlight in raw_highlights:
@@ -378,7 +378,7 @@ def format_number(value: float | int | None) -> str | None:
     """Formate un nombre pour l'interface française sans décimales superflues."""
     if value is None:
         return None
-    return f"{value:g}".replace(".", ",")
+    return f"{value:g}"
 
 
 def highlight_specs(
@@ -482,25 +482,25 @@ def create_highlighted_pdf(
 
 def render_source_url_fields() -> tuple[dict[str, str], list[str]]:
     """Affiche et valide les URL des catalogues des assureurs."""
-    st.caption("Liens source utilisés pour récupérer les documents. Ils peuvent être modifiés avant l'extraction.")
+    st.caption("Source links used to retrieve documents. You can edit them before extraction.")
     source_urls: dict[str, str] = {}
     entity_column, url_column = st.columns([1, 5])
-    entity_column.caption("Entité")
-    url_column.caption("URL source")
+    entity_column.caption("Entity")
+    url_column.caption("Source URL")
     for identifier, insurer in sorted(
         INSURERS.items(), key=lambda item: item[1].label.casefold()
     ):
         entity_column, url_column = st.columns([1, 5])
         entity_column.write(insurer.label)
         source_urls[identifier] = url_column.text_input(
-            f"URL source {insurer.label}",
+            f"{insurer.label} source URL",
             value=insurer.source_url,
             key=f"source-url-{identifier}",
             on_change=clear_global_results,
             label_visibility="collapsed",
         ).strip()
     source_url_errors = [
-        f"L'URL source {INSURERS[identifier].label} doit commencer par http:// ou https://."
+        f"The {INSURERS[identifier].label} source URL must start with http:// or https://."
         for identifier, source_url in source_urls.items()
         if not valid_source_url(source_url)
     ]
@@ -512,11 +512,11 @@ def render_source_url_fields() -> tuple[dict[str, str], list[str]]:
 def sync_uploaded_csv() -> list[str]:
     """Valide un CSV et synchronise son contenu avec les champs de fonds."""
     uploaded_csv = st.file_uploader(
-        "Importer des noms de fonds (CSV)",
+        "Import fund names (CSV)",
         type="csv",
         help=(
-            "Colonnes requises : entity et fund name. Les noms importés remplissent les "
-            "champs ci-dessous; les entités prises en charge sont AG, Vivium, Athora et NN."
+            "Required columns: entity and fund name. Imported names populate the fields "
+            "below; supported entities are AG, Vivium, Athora, and NN."
         ),
     )
     if uploaded_csv is None:
@@ -549,8 +549,8 @@ def sync_uploaded_csv() -> list[str]:
     st.session_state["global-imported-csv-signature"] = csv_signature
     clear_global_results()
     st.success(
-        f"{len(imported_selections)} fonds importé"
-        f"{'s' if len(imported_selections) > 1 else ''} dans les champs ci-dessous."
+        f"{len(imported_selections)} fund"
+        f"{'s' if len(imported_selections) > 1 else ''} imported into the fields below."
     )
     return []
 
@@ -558,8 +558,8 @@ def sync_uploaded_csv() -> list[str]:
 def render_fund_fields() -> list[FundSelection]:
     """Affiche les champs dynamiques et retourne les fonds renseignés."""
     st.caption(
-        "Saisis les noms de fonds, puis ajoute un champ si nécessaire, ou importe un CSV pour "
-        "remplir automatiquement les champs."
+        "Enter fund names, add a field when needed, or import a CSV to populate the fields "
+        "automatically."
     )
     insurers = sorted(INSURERS.items(), key=lambda item: item[1].label.casefold())
     fund_columns = st.columns(len(insurers))
@@ -570,14 +570,14 @@ def render_fund_fields() -> list[FundSelection]:
             field_count = max(1, st.session_state.get(field_count_key, 1))
             for field_index in range(field_count):
                 st.text_input(
-                    f"{insurer.label} — Nom du fonds {field_index + 1}",
+                    f"{insurer.label} — Fund name {field_index + 1}",
                     key=f"global-fund-{identifier}-{field_index}",
-                    placeholder="Saisis un nom de fonds",
+                    placeholder="Enter a fund name",
                     on_change=clear_global_results,
                     label_visibility="collapsed",
                 )
             if st.button(
-                f"Ajouter un fonds {insurer.label}",
+                f"Add {insurer.label} fund",
                 key=f"add-global-fund-{identifier}",
                 use_container_width=True,
             ):
@@ -597,7 +597,7 @@ def extract_selections(
 ) -> dict[str, ExtractionResult]:
     """Télécharge, extrait et surligne toutes les sélections."""
     results: dict[str, ExtractionResult] = {}
-    progress = st.progress(0, text="Préparation de l'extraction…")
+    progress = st.progress(0, text="Preparing extraction…")
     stages_per_selection = 3
     total_stages = len(selections) * stages_per_selection
 
@@ -606,7 +606,7 @@ def extract_selections(
         stage_start = index * stages_per_selection
         progress.progress(
             stage_start / total_stages,
-            text=f"{insurer.label} : téléchargement du document…",
+            text=f"{insurer.label}: downloading document…",
         )
         try:
             filename, content = fetch_pdf(
@@ -616,7 +616,7 @@ def extract_selections(
             )
             progress.progress(
                 (stage_start + 1) / total_stages,
-                text=f"{insurer.label} : extraction des informations…",
+                text=f"{insurer.label}: extracting information…",
             )
             extraction = extract_version_date(content, api_key)
         except Exception as error:
@@ -629,7 +629,7 @@ def extract_selections(
 
         progress.progress(
             (stage_start + 2) / total_stages,
-            text=f"{insurer.label} : surlignage du PDF…",
+            text=f"{insurer.label}: highlighting PDF…",
         )
         highlighted_content: bytes | None = None
         highlighted_count = 0
@@ -654,22 +654,22 @@ def extract_selections(
             highlight_error=highlight_error,
         )
 
-    progress.progress(1.0, text="Téléchargement, extraction et surlignage terminés.")
+    progress.progress(1.0, text="Download, extraction, and highlighting complete.")
     return results
 
 
 def result_row(result: ExtractionResult) -> dict[str, str]:
     """Convertit un résultat structuré en ligne de tableau."""
     row = {
-        "Assureur": INSURERS[result.identifier].label,
-        "Fonds": result.fund,
-        "Date de version": "—",
-        "Durée recommandée": "—",
-        "Réduction du rendement": "—",
-        "Confiance": "—",
+        "Insurer": INSURERS[result.identifier].label,
+        "Fund": result.fund,
+        "Version date": "—",
+        "Recommended holding period": "—",
+        "Reduction in yield": "—",
+        "Confidence": "—",
     }
     if result.error:
-        row["Statut"] = "Échec — détail ci-dessous"
+        row["Status"] = "Failed — details below"
         return row
 
     extraction = result.extraction or {}
@@ -678,27 +678,27 @@ def result_row(result: ExtractionResult) -> dict[str, str]:
     reduction_in_yield = extraction.get("reduction_in_yield_percent")
     row.update(
         {
-            "Date de version": (
+            "Version date": (
                 format_version_date(version_date if isinstance(version_date, str) else None)
-                or "Aucune date trouvée"
+                or "No date found"
             ),
-            "Durée recommandée": (
-                f"{format_number(holding_period)} ans"
+            "Recommended holding period": (
+                f"{format_number(holding_period)} years"
                 if isinstance(holding_period, (int, float))
                 and not isinstance(holding_period, bool)
-                else "Aucune durée trouvée"
+                else "No period found"
             ),
-            "Réduction du rendement": (
+            "Reduction in yield": (
                 f"{format_number(reduction_in_yield)} %"
                 if isinstance(reduction_in_yield, (int, float))
                 and not isinstance(reduction_in_yield, bool)
-                else "Aucune réduction trouvée"
+                else "No reduction found"
             ),
-            "Confiance": str(extraction.get("confidence") or "non précisée"),
-            "Statut": (
-                f"Informations extraites; surlignage impossible : {result.highlight_error}"
+            "Confidence": str(extraction.get("confidence") or "not specified"),
+            "Status": (
+                f"Information extracted; highlighting unavailable: {result.highlight_error}"
                 if result.highlight_error
-                else "Terminé"
+                else "Complete"
             ),
         }
     )
@@ -708,7 +708,7 @@ def result_row(result: ExtractionResult) -> dict[str, str]:
 def render_global_results(results: dict[str, ExtractionResult] | None) -> None:
     """Affiche le tableau et les téléchargements des extractions."""
     if not results:
-        st.info("Aucune extraction globale n'a encore été lancée.")
+        st.info("No bulk extraction has been run yet.")
         return
 
     st.dataframe(
@@ -716,19 +716,19 @@ def render_global_results(results: dict[str, ExtractionResult] | None) -> None:
         use_container_width=True,
         hide_index=True,
         column_config={
-            "Assureur": st.column_config.TextColumn("Assureur", width="small"),
-            "Fonds": st.column_config.TextColumn("Fonds", width="medium"),
-            "Date de version": st.column_config.TextColumn(
-                "Date de version", width="small"
+            "Insurer": st.column_config.TextColumn("Insurer", width="small"),
+            "Fund": st.column_config.TextColumn("Fund", width="medium"),
+            "Version date": st.column_config.TextColumn(
+                "Version date", width="medium"
             ),
-            "Durée recommandée": st.column_config.TextColumn(
-                "Durée recommandée", width="small"
+            "Recommended holding period": st.column_config.TextColumn(
+                "Recommended holding period", width="medium"
             ),
-            "Réduction du rendement": st.column_config.TextColumn(
-                "Réduction du rendement", width="small"
+            "Reduction in yield": st.column_config.TextColumn(
+                "Reduction in yield", width="medium"
             ),
-            "Confiance": st.column_config.TextColumn("Confiance", width="small"),
-            "Statut": st.column_config.TextColumn("Statut", width="large"),
+            "Confidence": st.column_config.TextColumn("Confidence", width="small"),
+            "Status": st.column_config.TextColumn("Status", width="medium"),
         },
     )
     for result in results.values():
@@ -738,19 +738,19 @@ def render_global_results(results: dict[str, ExtractionResult] | None) -> None:
         st.error(f"{insurer.label} — {result.fund} : {result.error}")
 
     original_column, highlighted_column = st.columns(2)
-    original_column.caption("Document original")
-    highlighted_column.caption("Document surligné")
+    original_column.caption("Original document")
+    highlighted_column.caption("Highlighted document")
 
     for selection_key, result in results.items():
         insurer = INSURERS[result.identifier]
         original_column, highlighted_column = st.columns(2)
         if not result.filename or result.content is None:
-            original_column.caption("Indisponible")
-            highlighted_column.caption("Indisponible")
+            original_column.caption("Unavailable")
+            highlighted_column.caption("Unavailable")
             continue
 
         original_column.download_button(
-            f"PDF original — {insurer.label} : {result.fund}",
+            f"Original PDF — {insurer.label}: {result.fund}",
             data=result.content,
             file_name=result.filename,
             mime="application/pdf",
@@ -758,12 +758,12 @@ def render_global_results(results: dict[str, ExtractionResult] | None) -> None:
             use_container_width=True,
         )
         if result.highlighted_content is None or not result.highlighted_count:
-            highlighted_column.caption("Indisponible")
+            highlighted_column.caption("Unavailable")
             continue
         highlighted_column.download_button(
-            f"PDF surligné — {insurer.label} : {result.fund}",
+            f"Highlighted PDF — {insurer.label}: {result.fund}",
             data=result.highlighted_content,
-            file_name=f"{Path(result.filename).stem}-surligne.pdf",
+            file_name=f"{Path(result.filename).stem}-highlighted.pdf",
             mime="application/pdf",
             key=f"global-download-highlighted-{selection_key}",
             use_container_width=True,
@@ -779,14 +779,14 @@ def render_global_tab() -> None:
     selections = render_fund_fields()
 
     if st.button(
-        "Récupérer et extraire les informations (IA)",
+        "Retrieve and extract information (AI)",
         type="primary",
         use_container_width=True,
         disabled=not selections or bool(csv_errors) or bool(source_url_errors),
     ):
         api_key = configured_openai_key()
         if not api_key:
-            st.warning("Configure OPENAI_API_KEY dans .streamlit/secrets.toml ou dans l'environnement.")
+            st.warning("Configure OPENAI_API_KEY in .streamlit/secrets.toml or the environment.")
         else:
             st.session_state["global-extraction-results"] = extract_selections(
                 selections, source_urls, api_key
@@ -796,7 +796,7 @@ def render_global_tab() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Documents de fonds", page_icon="📄", layout="wide")
+    st.set_page_config(page_title="Fund documents", page_icon="📄", layout="wide")
     render_global_tab()
 
 

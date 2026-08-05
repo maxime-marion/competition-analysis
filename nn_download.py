@@ -3,28 +3,24 @@
 
 from __future__ import annotations
 
-import argparse
-import re
-import unicodedata
 from pathlib import Path
 from urllib.parse import urljoin
 
-import requests
 from bs4 import BeautifulSoup, Tag
 
+from download_common import (
+    create_session,
+    download_pdf,
+    normalized,
+    parse_download_args,
+    sanitized_filename,
+    select_unique_match,
+)
 
-PAGE_URL = "https://www.nn.be/nl/legale-documenten"
+
+PAGE_URL = "https://www.nn.be/fr/documents-legaux"
 SECTION_TEXT = "Voor niet-fiscale producten NN Strategy (tak 23)"
 DEFAULT_DOCUMENT = "NN Blackrock Global Allocation Fund"
-
-
-def normalized(text: str) -> str:
-    decomposed = unicodedata.normalize("NFKD", text)
-    return " ".join(
-        "".join(character for character in decomposed if not unicodedata.combining(character))
-        .casefold()
-        .split()
-    )
 
 
 def section_links(html: str, page_url: str = PAGE_URL) -> list[tuple[str, str]]:
@@ -35,13 +31,13 @@ def section_links(html: str, page_url: str = PAGE_URL) -> list[tuple[str, str]]:
         and normalized(str(value)) == normalized(SECTION_TEXT)
     )
     if heading_text is None:
-        raise RuntimeError(f"La section « {SECTION_TEXT} » est introuvable.")
+        raise RuntimeError(f"The “{SECTION_TEXT}” section was not found.")
 
     container = heading_text.find_parent(
         "div", class_="paragraphs-item-pt-accordion-item"
     )
     if container is None:
-        raise RuntimeError("Le contenu de la section NN Strategy est introuvable.")
+        raise RuntimeError("The NN Strategy section content was not found.")
 
     links: list[tuple[str, str]] = []
     for link in container.find_all("a", href=True):
@@ -60,62 +56,38 @@ def section_links(html: str, page_url: str = PAGE_URL) -> list[tuple[str, str]]:
 
 def select_document(links: list[tuple[str, str]], query: str) -> tuple[str, str]:
     """Sélectionne un document par libellé exact ou partiel."""
-    wanted = normalized(query)
-    exact = [item for item in links if normalized(item[0]) == wanted]
-    matches = exact or [item for item in links if wanted in normalized(item[0])]
-
-    if len(matches) == 1:
-        return matches[0]
-    if not matches:
-        raise RuntimeError(f"Document introuvable : {query}")
-    raise RuntimeError(
-        "Le nom correspond à plusieurs documents :\n"
-        + "\n".join(f"- {title}" for title, _ in matches)
+    return select_unique_match(
+        links, query, missing_label="Document", multiple_label="documents"
     )
 
 
 def pdf_filename(title: str) -> str:
-    filename = re.sub(r"[^A-Za-z0-9À-ÿ._ -]+", "_", title).strip(" ._")
-    return f"{filename or 'document-nn'}.pdf"
+    return f"{sanitized_filename(title, 'document-nn')}.pdf"
 
 
 def download_document(query: str, output_dir: Path, page_url: str = PAGE_URL) -> Path:
-    session = requests.Session()
-    session.headers["User-Agent"] = "NN-Document-Downloader/1.0"
+    session = create_session("NN-Document-Downloader/1.0")
 
     page_response = session.get(page_url, timeout=30)
     page_response.raise_for_status()
     title, document_url = select_document(section_links(page_response.text, page_url), query)
 
-    document_response = session.get(document_url, timeout=60)
-    document_response.raise_for_status()
-    if not document_response.content.startswith(b"%PDF"):
-        raise RuntimeError("Le fichier reçu n'est pas un PDF valide.")
+    destination = download_pdf(session, document_url, output_dir, pdf_filename(title))
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    destination = output_dir / pdf_filename(title)
-    destination.write_bytes(document_response.content)
-
-    print(f"Document : {title}")
-    print(f"URL : {document_url}")
-    print(f"Enregistré dans : {destination.resolve()}")
+    print(f"Document: {title}")
+    print(f"URL: {document_url}")
+    print(f"Saved to: {destination.resolve()}")
     return destination
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--document",
-        default=DEFAULT_DOCUMENT,
-        help=f"Nom complet ou partie du document (défaut : {DEFAULT_DOCUMENT})",
+def parse_args():
+    return parse_download_args(
+        __doc__,
+        item_option="document",
+        item_label="document",
+        default_item=DEFAULT_DOCUMENT,
+        default_output_dir=Path("nn_downloads"),
     )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=Path("nn_downloads"),
-        help="Répertoire de destination (défaut : nn_downloads)",
-    )
-    return parser.parse_args()
 
 
 if __name__ == "__main__":
