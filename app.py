@@ -87,6 +87,21 @@ class FundSelection:
     fund: str
 
 
+@dataclass(frozen=True)
+class ExtractionResult:
+    """Résultat complet d'une extraction, succès comme échec."""
+
+    identifier: str
+    fund: str
+    filename: str | None = None
+    content: bytes | None = None
+    extraction: dict[str, object] | None = None
+    highlighted_content: bytes | None = None
+    highlighted_count: int = 0
+    error: str | None = None
+    highlight_error: str | None = None
+
+
 INSURERS = {
     "ag": Insurer(
         label="AG",
@@ -124,8 +139,8 @@ CSV_FUND_HEADERS = {
 }
 
 
-def normalized_label(value: str) -> str:
-    """Normalise un en-tête ou le nom d'un assureur pour les comparaisons."""
+def normalized_text(value: str) -> str:
+    """Normalise un texte court pour une comparaison tolérante."""
     decomposed = unicodedata.normalize("NFKD", value)
     return "".join(
         character.casefold()
@@ -150,7 +165,7 @@ def parse_fund_csv(content: bytes) -> tuple[list[FundSelection], list[str]]:
         return [], ["Le fichier CSV doit contenir une ligne d'en-têtes."]
 
     headers = {
-        normalized_label(header): header
+        normalized_text(header): header
         for header in reader.fieldnames
         if header is not None
     }
@@ -163,7 +178,7 @@ def parse_fund_csv(content: bytes) -> tuple[list[FundSelection], list[str]]:
         ]
 
     insurers_by_name = {
-        normalized_label(name): (identifier, insurer)
+        normalized_text(name): (identifier, insurer)
         for identifier, insurer in INSURERS.items()
         for name in (identifier, insurer.label)
     }
@@ -177,7 +192,7 @@ def parse_fund_csv(content: bytes) -> tuple[list[FundSelection], list[str]]:
         if not entity or not fund:
             errors.append(f"Ligne {row_number} : l'entité et le nom du fonds sont requis.")
             continue
-        match = insurers_by_name.get(normalized_label(entity))
+        match = insurers_by_name.get(normalized_text(entity))
         if not match:
             supported = ", ".join(insurer.label for insurer in INSURERS.values())
             errors.append(f"Ligne {row_number} : entité « {entity} » inconnue ({supported}).")
@@ -211,8 +226,7 @@ def selections_from_fund_fields() -> list[FundSelection]:
 
 def clear_global_results() -> None:
     """Évite d'afficher des résultats qui ne correspondent plus aux champs."""
-    st.session_state.pop("global-version-date-results", None)
-    st.session_state.pop("global-extraction-selections", None)
+    st.session_state.pop("global-extraction-results", None)
 
 
 def initialize_global_fund_fields() -> None:
@@ -225,13 +239,19 @@ def initialize_global_fund_fields() -> None:
     st.session_state["global-fund-fields-initialized"] = True
 
 
-def fetch_pdf(insurer: Insurer, fund: str) -> tuple[str, str, bytes]:
+def fetch_pdf(
+    insurer: Insurer, fund: str, source_url: str | None = None
+) -> tuple[str, bytes]:
     """Télécharge le PDF dans un dossier temporaire puis retourne ses données."""
     if insurer.downloader is None:
         raise ValueError(f"Aucun téléchargeur n'est configuré pour {insurer.label}.")
     with TemporaryDirectory(prefix="fund-document-") as temporary_directory:
-        path = insurer.downloader(fund, Path(temporary_directory), insurer.source_url)
-        return path.name, insurer.source_url, path.read_bytes()
+        path = insurer.downloader(
+            fund,
+            Path(temporary_directory),
+            source_url or insurer.source_url,
+        )
+        return path.name, path.read_bytes()
 
 
 def valid_source_url(value: str) -> bool:
@@ -361,24 +381,14 @@ def highlight_specs(
     )
 
 
-def normalized_word(value: str) -> str:
-    """Normalise un mot pour retrouver un extrait malgré la ponctuation ou les accents."""
-    decomposed = unicodedata.normalize("NFKD", value)
-    return "".join(
-        character.casefold()
-        for character in decomposed
-        if not unicodedata.combining(character) and character.isalnum()
-    )
-
-
 def fuzzy_word_rectangles(page: pymupdf.Page, text: str) -> list[list[pymupdf.Rect]]:
     """Retrouve les rectangles d'un extrait malgré les sauts de ligne du PDF."""
     indexed_words = [
-        (normalized_word(str(word[4])), pymupdf.Rect(word[:4]))
+        (normalized_text(str(word[4])), pymupdf.Rect(word[:4]))
         for word in page.get_text("words", sort=True)
     ]
     indexed_words = [item for item in indexed_words if item[0]]
-    target = [normalized_word(word) for word in text.split()]
+    target = [normalized_text(word) for word in text.split()]
     target = [word for word in target if word]
     if not indexed_words or not target:
         return []
@@ -451,91 +461,8 @@ def create_highlighted_pdf(
         return document.tobytes(garbage=4, deflate=True), highlighted_sources
 
 
-def show_pdf(filename: str, source_url: str, content: bytes, key: str) -> None:
-    """Propose le PDF original, son extraction et sa copie surlignée."""
-    extraction_key = f"version-date-{key}"
-    extraction = st.session_state.get(extraction_key)
-
-    st.download_button(
-        "Télécharger le PDF original",
-        data=content,
-        file_name=filename,
-        mime="application/pdf",
-        key=f"download-{key}",
-        use_container_width=True,
-    )
-    st.link_button("Ouvrir la bibliothèque de l'assureur", source_url)
-
-    if st.button(
-        "Extraire les informations et préparer le PDF surligné (IA)",
-        key=f"extract-version-date-{key}",
-        type="primary",
-        use_container_width=True,
-    ):
-        api_key = configured_openai_key()
-        if not api_key:
-            st.warning("Configure OPENAI_API_KEY dans .streamlit/secrets.toml ou dans l'environnement.")
-        else:
-            with st.spinner("Extraction des informations avec GPT-5 mini…"):
-                try:
-                    st.session_state[extraction_key] = extract_version_date(content, api_key)
-                    st.rerun()
-                except Exception as error:
-                    st.error(f"L'extraction IA a échoué : {error}")
-
-    if extraction:
-        if extraction["version_date"]:
-            st.info(
-                "Date de version extraite : "
-                f"{extraction['display_date'] or extraction['version_date']}"
-            )
-            st.caption(f"Confiance : {extraction['confidence'] or 'non précisée'}")
-        else:
-            st.warning("Aucune date de version explicite n'a été trouvée dans ce document.")
-
-        holding_period = format_number(extraction["recommended_holding_period_years"])
-        reduction_in_yield = format_number(extraction["reduction_in_yield_percent"])
-        if holding_period or reduction_in_yield:
-            st.caption(
-                "Durée de détention recommandée : "
-                f"{holding_period + ' ans' if holding_period else 'non trouvée'} — "
-                "Réduction du rendement : "
-                f"{reduction_in_yield + ' %' if reduction_in_yield else 'non trouvée'}"
-            )
-
-        specs = highlight_specs(extraction)
-        if specs:
-            highlighted_content, highlighted_count = create_highlighted_pdf(content, specs)
-            if highlighted_count:
-                highlighted_filename = f"{Path(filename).stem}-surligne.pdf"
-                st.download_button(
-                    "Télécharger le PDF surligné",
-                    data=highlighted_content,
-                    file_name=highlighted_filename,
-                    mime="application/pdf",
-                    key=f"download-highlighted-{key}",
-                    type="primary",
-                    use_container_width=True,
-                )
-                st.caption(
-                    f"{highlighted_count} source"
-                    f"{'s' if highlighted_count > 1 else ''} surlignée"
-                    f"{'s' if highlighted_count > 1 else ''} dans le PDF."
-                )
-            else:
-                st.warning(
-                    "Les informations ont été extraites, mais leurs emplacements "
-                    "n'ont pas pu être retrouvés dans le PDF."
-                )
-        else:
-            st.warning("Aucun emplacement de surlignage n'a été retourné par l'extraction.")
-
-
-def render_global_tab() -> None:
-    """Charge les documents sélectionnés et centralise leurs dates de version."""
-    st.subheader("Fund competition analysis")
-    initialize_global_fund_fields()
-
+def render_source_url_fields() -> tuple[dict[str, str], list[str]]:
+    """Affiche et valide les URL des catalogues des assureurs."""
     st.caption("Liens source utilisés pour récupérer les documents. Ils peuvent être modifiés avant l'extraction.")
     source_urls: dict[str, str] = {}
     entity_column, url_column = st.columns([1, 5])
@@ -550,6 +477,7 @@ def render_global_tab() -> None:
             f"URL source {insurer.label}",
             value=insurer.source_url,
             key=f"source-url-{identifier}",
+            on_change=clear_global_results,
             label_visibility="collapsed",
         ).strip()
     source_url_errors = [
@@ -559,7 +487,11 @@ def render_global_tab() -> None:
     ]
     for error in source_url_errors:
         st.error(error)
+    return source_urls, source_url_errors
 
+
+def sync_uploaded_csv() -> list[str]:
+    """Valide un CSV et synchronise son contenu avec les champs de fonds."""
     uploaded_csv = st.file_uploader(
         "Importer des noms de fonds (CSV)",
         type="csv",
@@ -568,37 +500,44 @@ def render_global_tab() -> None:
             "champs ci-dessous; les entités prises en charge sont AG, Vivium, Athora et NN."
         ),
     )
-    csv_errors: list[str] = []
-    if uploaded_csv is not None:
-        csv_content = uploaded_csv.getvalue()
-        imported_selections, csv_errors = parse_fund_csv(csv_content)
-        if csv_errors:
-            for error in csv_errors:
-                st.error(error)
-    else:
+    if uploaded_csv is None:
         st.session_state.pop("global-imported-csv-signature", None)
+        return []
 
-    if uploaded_csv is not None and not csv_errors:
-        csv_signature = sha256(csv_content).hexdigest()
-        if st.session_state.get("global-imported-csv-signature") != csv_signature:
-            imported_funds = {identifier: [] for identifier in INSURERS}
-            for selection in imported_selections:
-                imported_funds[selection.identifier].append(selection.fund)
-            for identifier, funds in imported_funds.items():
-                previous_count = st.session_state.get(f"global-fund-count-{identifier}", 1)
-                field_count = max(1, len(funds))
-                for index in range(max(previous_count, field_count)):
-                    st.session_state[f"global-fund-{identifier}-{index}"] = (
-                        funds[index] if index < len(funds) else ""
-                    )
-                st.session_state[f"global-fund-count-{identifier}"] = field_count
-            st.session_state["global-imported-csv-signature"] = csv_signature
-            clear_global_results()
-            st.success(
-                f"{len(imported_selections)} fonds importé"
-                f"{'s' if len(imported_selections) > 1 else ''} dans les champs ci-dessous."
+    csv_content = uploaded_csv.getvalue()
+    imported_selections, csv_errors = parse_fund_csv(csv_content)
+    for error in csv_errors:
+        st.error(error)
+    if csv_errors:
+        return csv_errors
+
+    csv_signature = sha256(csv_content).hexdigest()
+    if st.session_state.get("global-imported-csv-signature") == csv_signature:
+        return []
+
+    imported_funds = {identifier: [] for identifier in INSURERS}
+    for selection in imported_selections:
+        imported_funds[selection.identifier].append(selection.fund)
+    for identifier, funds in imported_funds.items():
+        previous_count = st.session_state.get(f"global-fund-count-{identifier}", 1)
+        field_count = max(1, len(funds))
+        for index in range(max(previous_count, field_count)):
+            st.session_state[f"global-fund-{identifier}-{index}"] = (
+                funds[index] if index < len(funds) else ""
             )
+        st.session_state[f"global-fund-count-{identifier}"] = field_count
 
+    st.session_state["global-imported-csv-signature"] = csv_signature
+    clear_global_results()
+    st.success(
+        f"{len(imported_selections)} fonds importé"
+        f"{'s' if len(imported_selections) > 1 else ''} dans les champs ci-dessous."
+    )
+    return []
+
+
+def render_fund_fields() -> list[FundSelection]:
+    """Affiche les champs dynamiques et retourne les fonds renseignés."""
     st.caption(
         "Saisis les noms de fonds, puis ajoute un champ si nécessaire, ou importe un CSV pour "
         "remplir automatiquement les champs."
@@ -626,8 +565,178 @@ def render_global_tab() -> None:
                 st.session_state[field_count_key] = field_count + 1
                 clear_global_results()
                 st.rerun()
+    return selections_from_fund_fields()
 
-    selections = selections_from_fund_fields()
+
+def exception_message(error: Exception) -> str:
+    """Retourne un message exploitable même pour une exception sans texte."""
+    return str(error).strip() or error.__class__.__name__
+
+
+def extract_selections(
+    selections: list[FundSelection], source_urls: dict[str, str], api_key: str
+) -> dict[str, ExtractionResult]:
+    """Télécharge, extrait et surligne toutes les sélections."""
+    results: dict[str, ExtractionResult] = {}
+    progress = st.progress(0, text="Préparation de l'extraction…")
+    stages_per_selection = 3
+    total_stages = len(selections) * stages_per_selection
+
+    for index, selection in enumerate(selections):
+        insurer = selection.insurer
+        stage_start = index * stages_per_selection
+        progress.progress(
+            stage_start / total_stages,
+            text=f"{insurer.label} : téléchargement du document…",
+        )
+        try:
+            filename, content = fetch_pdf(
+                insurer,
+                selection.fund,
+                source_urls[selection.identifier],
+            )
+            progress.progress(
+                (stage_start + 1) / total_stages,
+                text=f"{insurer.label} : extraction des informations…",
+            )
+            extraction = extract_version_date(content, api_key)
+        except Exception as error:
+            results[selection.key] = ExtractionResult(
+                identifier=selection.identifier,
+                fund=selection.fund,
+                error=exception_message(error),
+            )
+            continue
+
+        progress.progress(
+            (stage_start + 2) / total_stages,
+            text=f"{insurer.label} : surlignage du PDF…",
+        )
+        highlighted_content: bytes | None = None
+        highlighted_count = 0
+        highlight_error: str | None = None
+        specs = highlight_specs(extraction)
+        if specs:
+            try:
+                highlighted_content, highlighted_count = create_highlighted_pdf(
+                    content, specs
+                )
+            except Exception as error:
+                highlight_error = exception_message(error)
+
+        results[selection.key] = ExtractionResult(
+            identifier=selection.identifier,
+            fund=selection.fund,
+            filename=filename,
+            content=content,
+            extraction=extraction,
+            highlighted_content=highlighted_content,
+            highlighted_count=highlighted_count,
+            highlight_error=highlight_error,
+        )
+
+    progress.progress(1.0, text="Téléchargement, extraction et surlignage terminés.")
+    return results
+
+
+def result_row(result: ExtractionResult) -> dict[str, str]:
+    """Convertit un résultat structuré en ligne de tableau."""
+    row = {
+        "Assureur": INSURERS[result.identifier].label,
+        "Fonds": result.fund,
+        "Date de version": "—",
+        "Durée recommandée": "—",
+        "Réduction du rendement": "—",
+        "Confiance": "—",
+    }
+    if result.error:
+        row["Statut"] = f"Échec : {result.error}"
+        return row
+
+    extraction = result.extraction or {}
+    version_date = extraction.get("version_date")
+    holding_period = extraction.get("recommended_holding_period_years")
+    reduction_in_yield = extraction.get("reduction_in_yield_percent")
+    row.update(
+        {
+            "Date de version": (
+                format_version_date(version_date if isinstance(version_date, str) else None)
+                or "Aucune date trouvée"
+            ),
+            "Durée recommandée": (
+                f"{format_number(holding_period)} ans"
+                if isinstance(holding_period, (int, float))
+                and not isinstance(holding_period, bool)
+                else "Aucune durée trouvée"
+            ),
+            "Réduction du rendement": (
+                f"{format_number(reduction_in_yield)} %"
+                if isinstance(reduction_in_yield, (int, float))
+                and not isinstance(reduction_in_yield, bool)
+                else "Aucune réduction trouvée"
+            ),
+            "Confiance": str(extraction.get("confidence") or "non précisée"),
+            "Statut": (
+                f"Informations extraites; surlignage impossible : {result.highlight_error}"
+                if result.highlight_error
+                else "Terminé"
+            ),
+        }
+    )
+    return row
+
+
+def render_global_results(results: dict[str, ExtractionResult] | None) -> None:
+    """Affiche le tableau et les téléchargements des extractions."""
+    if not results:
+        st.info("Aucune extraction globale n'a encore été lancée.")
+        return
+
+    st.dataframe(
+        [result_row(result) for result in results.values()],
+        use_container_width=True,
+        hide_index=True,
+    )
+    original_column, highlighted_column = st.columns(2)
+    original_column.caption("Document original")
+    highlighted_column.caption("Document surligné")
+
+    for selection_key, result in results.items():
+        insurer = INSURERS[result.identifier]
+        original_column, highlighted_column = st.columns(2)
+        if not result.filename or result.content is None:
+            original_column.caption("Indisponible")
+            highlighted_column.caption("Indisponible")
+            continue
+
+        original_column.download_button(
+            f"PDF original — {insurer.label} : {result.fund}",
+            data=result.content,
+            file_name=result.filename,
+            mime="application/pdf",
+            key=f"global-download-original-{selection_key}",
+            use_container_width=True,
+        )
+        if result.highlighted_content is None or not result.highlighted_count:
+            highlighted_column.caption("Indisponible")
+            continue
+        highlighted_column.download_button(
+            f"PDF surligné — {insurer.label} : {result.fund}",
+            data=result.highlighted_content,
+            file_name=f"{Path(result.filename).stem}-surligne.pdf",
+            mime="application/pdf",
+            key=f"global-download-highlighted-{selection_key}",
+            use_container_width=True,
+        )
+
+
+def render_global_tab() -> None:
+    """Charge les documents sélectionnés et centralise leurs informations."""
+    st.subheader("Fund competition analysis")
+    initialize_global_fund_fields()
+    source_urls, source_url_errors = render_source_url_fields()
+    csv_errors = sync_uploaded_csv()
+    selections = render_fund_fields()
 
     if st.button(
         "Récupérer et extraire les informations (IA)",
@@ -638,196 +747,12 @@ def render_global_tab() -> None:
         api_key = configured_openai_key()
         if not api_key:
             st.warning("Configure OPENAI_API_KEY dans .streamlit/secrets.toml ou dans l'environnement.")
-        elif not selections or not all(selection.fund for selection in selections):
-            st.warning("Saisis ou importe un fonds pour chaque entité avant de lancer l'extraction.")
         else:
-            rows: list[dict[str, str]] = []
-            progress = st.progress(0, text="Préparation de l'extraction…")
-            stages_per_insurer = 3
-            total_stages = len(selections) * stages_per_insurer
-            for index, selection in enumerate(selections, start=1):
-                selection_key = selection.key
-                identifier = selection.identifier
-                insurer = Insurer(
-                    label=selection.insurer.label,
-                    default_fund=selection.insurer.default_fund,
-                    source_url=source_urls[identifier],
-                    downloader=selection.insurer.downloader,
-                )
-                fund = selection.fund
-                st.session_state.pop(f"global-result-{selection_key}", None)
-                st.session_state.pop(f"global-highlighted-result-{selection_key}", None)
-                stage_start = (index - 1) * stages_per_insurer
-                progress.progress(
-                    stage_start / total_stages,
-                    text=f"{insurer.label} : téléchargement du document…",
-                )
-                try:
-                    filename, source_url, content = fetch_pdf(insurer, fund)
-                    progress.progress(
-                        (stage_start + 1) / total_stages,
-                        text=f"{insurer.label} : extraction des informations…",
-                    )
-                    extraction = extract_version_date(content, api_key)
-                except Exception:
-                    rows.append(
-                        {
-                            "Assureur": insurer.label,
-                            "Fonds": fund,
-                            "Date de version": "—",
-                            "Durée recommandée": "—",
-                            "Réduction du rendement": "—",
-                            "Confiance": "—",
-                        }
-                    )
-                    continue
+            st.session_state["global-extraction-results"] = extract_selections(
+                selections, source_urls, api_key
+            )
 
-                progress.progress(
-                    (stage_start + 2) / total_stages,
-                    text=f"{insurer.label} : surlignage du PDF…",
-                )
-                highlighted_result: tuple[bytes, int] | None = None
-                specs = highlight_specs(extraction)
-                if specs:
-                    try:
-                        highlighted_result = create_highlighted_pdf(content, specs)
-                    except Exception:
-                        # L'extraction reste disponible même si le surlignage échoue.
-                        highlighted_result = None
-
-                st.session_state[f"global-result-{selection_key}"] = (
-                    filename,
-                    source_url,
-                    content,
-                )
-                st.session_state[f"global-highlighted-result-{selection_key}"] = (
-                    highlighted_result
-                )
-                rows.append(
-                    {
-                        "Assureur": insurer.label,
-                        "Fonds": fund,
-                        "Date de version": (
-                            format_version_date(extraction["version_date"])
-                            or "Aucune date trouvée"
-                        ),
-                        "Durée recommandée": (
-                            (format_number(extraction["recommended_holding_period_years"]) or "—")
-                            + " ans"
-                            if extraction["recommended_holding_period_years"] is not None
-                            else "Aucune durée trouvée"
-                        ),
-                        "Réduction du rendement": (
-                            (format_number(extraction["reduction_in_yield_percent"]) or "—")
-                            + " %"
-                            if extraction["reduction_in_yield_percent"] is not None
-                            else "Aucune réduction trouvée"
-                        ),
-                        "Confiance": extraction["confidence"] or "non précisée",
-                    }
-                )
-            progress.progress(1.0, text="Téléchargement, extraction et surlignage terminés.")
-            st.session_state["global-version-date-results"] = rows
-            st.session_state["global-extraction-selections"] = [
-                (selection.key, selection.identifier, selection.fund)
-                for selection in selections
-            ]
-
-    results = st.session_state.get("global-version-date-results")
-    if results:
-        st.dataframe(results, use_container_width=True, hide_index=True)
-        extracted_selections = st.session_state.get("global-extraction-selections", [])
-        if extracted_selections:
-            original_column, highlighted_column = st.columns(2)
-            original_column.caption("Document original")
-            highlighted_column.caption("Document surligné")
-            for extraction_selection in extracted_selections:
-                selection_key, identifier, *fund_values = extraction_selection
-                fund = fund_values[0] if fund_values else "Fonds importé"
-                insurer = INSURERS[identifier]
-                result = st.session_state.get(f"global-result-{selection_key}")
-                highlighted_result = st.session_state.get(
-                    f"global-highlighted-result-{selection_key}"
-                )
-                original_column, highlighted_column = st.columns(2)
-                if not result:
-                    original_column.caption("Indisponible")
-                    highlighted_column.caption("Indisponible")
-                    continue
-                filename, _, content = result
-                original_column.download_button(
-                    f"PDF original — {insurer.label} : {fund}",
-                    data=content,
-                    file_name=filename,
-                    mime="application/pdf",
-                    key=f"global-download-original-{selection_key}",
-                    use_container_width=True,
-                )
-                if not highlighted_result:
-                    highlighted_column.caption("Indisponible")
-                    continue
-                highlighted_content, highlighted_count = highlighted_result
-                if not highlighted_count:
-                    highlighted_column.caption("Indisponible")
-                    continue
-                highlighted_column.download_button(
-                    f"PDF surligné — {insurer.label} : {fund}",
-                    data=highlighted_content,
-                    file_name=f"{Path(filename).stem}-surligne.pdf",
-                    mime="application/pdf",
-                    key=f"global-download-highlighted-{selection_key}",
-                    use_container_width=True,
-                )
-    else:
-        st.info("Aucune extraction globale n'a encore été lancée.")
-
-
-def render_insurer_tab(identifier: str, insurer: Insurer) -> None:
-    fund = st.text_input(
-        "Nom du fonds ou une partie distinctive de son nom",
-        value=insurer.default_fund,
-        key=f"fund-{identifier}",
-    )
-    st.caption("La recherche n'est pas sensible aux accents et accepte un nom partiel unique.")
-
-    if st.button(f"Récupérer le document {insurer.label}", key=f"fetch-{identifier}"):
-        if not fund.strip():
-            st.warning("Saisis le nom d'un fonds.")
-        else:
-            with st.spinner(f"Recherche du document {insurer.label}…"):
-                try:
-                    filename, source_url, content = fetch_pdf(insurer, fund.strip())
-                except Exception as error:  # Le site peut changer ses libellés ou ses liens.
-                    st.error(f"Document introuvable ou inaccessible : {error}")
-                else:
-                    st.session_state[f"result-{identifier}"] = (
-                        filename,
-                        source_url,
-                        content,
-                    )
-                    st.session_state.pop(f"version-date-{identifier}", None)
-
-    result = st.session_state.get(f"result-{identifier}")
-    if result:
-        filename, source_url, content = result
-        st.success(f"Document chargé : {filename}")
-        show_pdf(filename, source_url, content, identifier)
-
-
-def render_allianz_tab() -> None:
-    st.info(
-        "Le centre de documents Allianz est une application dynamique protégée contre "
-        "les navigateurs automatisés. Le téléchargement direct n'est pas encore fiable."
-    )
-    st.text_input(
-        "Nom du fonds Allianz (pour référence)",
-        value="Allianz ActiveInvest",
-        key="fund-allianz",
-    )
-    st.link_button(
-        "Ouvrir le centre de documents Allianz",
-        "https://www.allianz.be/fr/particuliers/documents.html",
-    )
+    render_global_results(st.session_state.get("global-extraction-results"))
 
 
 def main() -> None:
