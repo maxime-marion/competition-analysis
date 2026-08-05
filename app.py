@@ -28,6 +28,11 @@ from athora_download import (
     DEFAULT_FUND as ATHORA_DEFAULT_FUND,
     download_fund as download_athora_fund,
 )
+from baloise_download import (
+    DEFAULT_FUND as BALOISE_DEFAULT_FUND,
+    PAGE_URL as BALOISE_PAGE_URL,
+    download_fund as download_baloise_fund,
+)
 from nn_download import (
     DEFAULT_DOCUMENT as NN_DEFAULT_DOCUMENT,
     download_document as download_nn_document,
@@ -139,6 +144,12 @@ INSURERS = {
         default_fund=ATHORA_DEFAULT_FUND,
         source_url="https://www.athora.com/be/fr/bibliotheque/documents",
         downloader=download_athora_fund,
+    ),
+    "baloise": Insurer(
+        label="Baloise",
+        default_fund=BALOISE_DEFAULT_FUND,
+        source_url=BALOISE_PAGE_URL,
+        downloader=download_baloise_fund,
     ),
     "nn": Insurer(
         label="NN",
@@ -516,7 +527,7 @@ def sync_uploaded_csv() -> list[str]:
         type="csv",
         help=(
             "Required columns: entity and fund name. Imported names populate the fields "
-            "below; supported entities are AG, Vivium, Athora, and NN."
+            "below; supported entities are AG, Vivium, Athora, Baloise, and NN."
         ),
     )
     if uploaded_csv is None:

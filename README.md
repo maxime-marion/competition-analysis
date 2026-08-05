@@ -76,11 +76,30 @@ python nn_download.py --document "NN Fidelity world Fund"
 
 Le PDF est enregistré dans le dossier `nn_downloads`. Le script relit la page NN à chaque exécution afin de récupérer l'URL et le jeton publics actuellement associés au document.
 
+## Téléchargement d'un EID Baloise
+
+Le script Baloise consulte le catalogue EID public intégré à la page de documents
+Baloise et recherche le fonds par nom exact ou partiel :
+
+```bash
+python baloise_download.py
+```
+
+Par défaut, il télécharge l'EID de `Global Equity Fund`. Pour choisir un autre fonds :
+
+```bash
+python baloise_download.py --fund "Pictet Smartcity Fund"
+```
+
+Lorsqu'un fonds existe pour plusieurs produits, utilise le libellé distinctif affiché
+dans le message d'erreur, par exemple `nom du fonds — produit — type de prime`.
+Le PDF est enregistré dans le dossier `baloise_downloads`.
+
 ## Application Streamlit
 
-L'application regroupe les téléchargeurs Vivium, Athora, NN et AG dans une interface
-unique. Saisis un fonds, clique sur le bouton de récupération, puis télécharge le
-document original ou sa copie surlignée :
+L'application regroupe les téléchargeurs Vivium, Athora, Baloise, NN et AG dans
+une interface unique. Saisis un fonds, clique sur le bouton de récupération, puis
+télécharge le document original ou sa copie surlignée :
 
 ```bash
 python3 -m pip install -r requirements.txt
@@ -134,10 +153,11 @@ entity,fund name
 AG,AG Life Optitrack Equities
 Vivium,Euro Corporate SRI Bonds
 AG,AG Life Optitrack Defensive
+Baloise,Global Equity Fund
 NN,NN Blackrock Global Allocation Fund
 ```
 
-Les entités prises en charge sont `AG`, `Vivium`, `Athora` et `NN`. Après validation,
+Les entités prises en charge sont `AG`, `Vivium`, `Athora`, `Baloise` et `NN`. Après validation,
 l'import remplit directement les champs correspondants : aucun tableau de sélection
 supplémentaire n'est affiché. Une même entité peut apparaître plusieurs fois avec des
 fonds différents ; un champ est créé pour chacun de ses fonds.
