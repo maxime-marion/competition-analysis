@@ -4,14 +4,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
-
-from bs4 import BeautifulSoup, Tag
 
 from download_common import (
     create_session,
+    document_links,
     download_pdf,
-    normalized,
     parse_download_args,
     pdf_filename_from_url,
     select_unique_match,
@@ -20,24 +17,6 @@ from download_common import (
 
 PAGE_URL = "https://www.vivium.be/fr/private-individuals/fiches-info"
 DEFAULT_FUND = "DIC - Branche 23 Euro Corporate SRI Bonds"
-
-
-def fund_links(html: str, page_url: str = PAGE_URL) -> list[tuple[str, str]]:
-    """Retourne les liens PDF affichés sur la page Vivium.
-
-    La sélection du fonds se fait ensuite sur son nom complet, sans dépendre du
-    libellé ou de la structure d'une section de la page.
-    """
-    soup = BeautifulSoup(html, "html.parser")
-    links: list[tuple[str, str]] = []
-    for element in soup.find_all("a", href=True):
-        if not isinstance(element, Tag):
-            continue
-        document_url = urljoin(page_url, str(element["href"]))
-        if ".pdf" not in urlparse(document_url).path.casefold():
-            continue
-        links.append((element.get_text(" ", strip=True), document_url))
-    return links
 
 
 def select_fund(links: list[tuple[str, str]], query: str) -> tuple[str, str]:
@@ -57,7 +36,9 @@ def download_fund(query: str, output_dir: Path, page_url: str = PAGE_URL) -> Pat
 
     page_response = session.get(page_url, timeout=30)
     page_response.raise_for_status()
-    title, document_url = select_fund(fund_links(page_response.text, page_url), query)
+    title, document_url = select_fund(
+        document_links(page_response.text, page_url), query
+    )
 
     destination = download_pdf(session, document_url, output_dir, pdf_filename(document_url))
 

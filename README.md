@@ -51,7 +51,7 @@ Le script Athora recherche directement le nom du fonds dans les documents affich
 python athora_download.py
 ```
 
-Par défaut, il télécharge le document du fonds `Athora DNCA Invest Beyd Semperosa A`. Pour choisir un autre fonds Profilife :
+Par défaut, il télécharge le document du fonds `Profilife - Athora DNCA Invest Beyd Semperosa A`. Pour choisir un autre fonds Profilife :
 
 ```bash
 python athora_download.py --fund "Athora Pictet Gbl Megatrend Select P"
@@ -59,9 +59,10 @@ python athora_download.py --fund "Athora Pictet Gbl Megatrend Select P"
 
 Le PDF est enregistré dans le dossier `athora_downloads`. Le script relit la page Athora à chaque exécution afin de suivre une éventuelle modification de l'URL du document.
 
-## Téléchargement d'un document NN Strategy branche 23
+## Téléchargement d'un document NN
 
-Le script NN cible la section néerlandaise `Voor niet-fiscale producten NN Strategy (tak 23)` :
+Le script NN recherche le nom du fonds parmi les documents affichés sur la page
+des documents légaux :
 
 ```bash
 python nn_download.py

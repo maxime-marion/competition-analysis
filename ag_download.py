@@ -4,12 +4,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Tag
 
 from download_common import (
     create_session,
+    document_links,
     download_pdf,
     normalized,
     parse_download_args,
@@ -50,17 +51,11 @@ def select_fund(funds: list[tuple[str, str]], query: str) -> tuple[str, str]:
 
 def kid_links(html: str, fund_url: str) -> list[tuple[str, str]]:
     """Retourne les liens PDF dont le libellé identifie un KID."""
-    soup = BeautifulSoup(html, "html.parser")
     links: list[tuple[str, str]] = []
-    for link in soup.find_all("a", href=True):
-        if not isinstance(link, Tag):
-            continue
-        title = link.get_text(" ", strip=True)
-        document_url = urljoin(fund_url, str(link["href"]))
+    for title, document_url in document_links(html, fund_url):
         normalized_title = normalized(title)
         if (
-            ".pdf" in urlparse(document_url).path.casefold()
-            and "document" in normalized_title
+            "document" in normalized_title
             and "information" in normalized_title
             and ("cle" in normalized_title or "kid" in normalized_title)
         ):

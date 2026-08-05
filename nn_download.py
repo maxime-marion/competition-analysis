@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Télécharge un document de la section NN Strategy non fiscale (branche 23)."""
+"""Télécharge un document NN depuis la page des documents légaux."""
 
 from __future__ import annotations
 
 from pathlib import Path
-from urllib.parse import urljoin
-
-from bs4 import BeautifulSoup, Tag
 
 from download_common import (
     create_session,
+    document_links,
     download_pdf,
     normalized,
     parse_download_args,
@@ -19,45 +17,21 @@ from download_common import (
 
 
 PAGE_URL = "https://www.nn.be/fr/documents-legaux"
-SECTION_TEXT = "Voor niet-fiscale producten NN Strategy (tak 23)"
 DEFAULT_DOCUMENT = "NN Blackrock Global Allocation Fund"
 
 
-def section_links(html: str, page_url: str = PAGE_URL) -> list[tuple[str, str]]:
-    """Retourne les documents du bloc NN Strategy non fiscal (branche 23)."""
-    soup = BeautifulSoup(html, "html.parser")
-    heading_text = soup.find(
-        string=lambda value: bool(value)
-        and normalized(str(value)) == normalized(SECTION_TEXT)
-    )
-    if heading_text is None:
-        raise RuntimeError(f"The “{SECTION_TEXT}” section was not found.")
-
-    container = heading_text.find_parent(
-        "div", class_="paragraphs-item-pt-accordion-item"
-    )
-    if container is None:
-        raise RuntimeError("The NN Strategy section content was not found.")
-
-    links: list[tuple[str, str]] = []
-    for link in container.find_all("a", href=True):
-        if not isinstance(link, Tag):
-            continue
-        title = link.get_text(" ", strip=True)
-        normalized_title = normalized(title)
-        if (
-            title
-            and "essentiele" in normalized_title
-            and "informatiedocument" in normalized_title
-        ):
-            links.append((title, urljoin(page_url, str(link["href"]))))
-    return links
-
-
 def select_document(links: list[tuple[str, str]], query: str) -> tuple[str, str]:
-    """Sélectionne un document par libellé exact ou partiel."""
+    """Sélectionne un document, en privilégiant le DIC lorsqu'il est présent."""
+    key_information_documents = [
+        item
+        for item in links
+        if "document d'informations cles" in normalized(item[0])
+    ]
     return select_unique_match(
-        links, query, missing_label="Document", multiple_label="documents"
+        key_information_documents or links,
+        query,
+        missing_label="Document",
+        multiple_label="documents",
     )
 
 
@@ -70,7 +44,15 @@ def download_document(query: str, output_dir: Path, page_url: str = PAGE_URL) ->
 
     page_response = session.get(page_url, timeout=30)
     page_response.raise_for_status()
-    title, document_url = select_document(section_links(page_response.text, page_url), query)
+    title, document_url = select_document(
+        document_links(
+            page_response.text,
+            page_url,
+            selector="a.download-link[href]",
+            require_pdf=False,
+        ),
+        query,
+    )
 
     destination = download_pdf(session, document_url, output_dir, pdf_filename(title))
 

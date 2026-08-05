@@ -6,12 +6,42 @@ import argparse
 import re
 import unicodedata
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 import requests
+from bs4 import BeautifulSoup, Tag
 
 
 DocumentLink = tuple[str, str]
+
+
+def document_links(
+    html: str,
+    page_url: str,
+    *,
+    selector: str = "a[href]",
+    link_selector: str | None = None,
+    require_pdf: bool = True,
+) -> list[DocumentLink]:
+    """Retourne les liens de documents et leurs libellés depuis le HTML fourni.
+
+    ``selector`` limite éventuellement la zone de recherche et ``link_selector``
+    désigne le lien à utiliser à l'intérieur de chaque élément sélectionné. Cela
+    permet de conserver un libellé porté par un conteneur plutôt que par son lien.
+    Les documents non terminés par ``.pdf`` sont acceptés avec
+    ``require_pdf=False``.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    links: list[DocumentLink] = []
+    for element in soup.select(selector):
+        link = element if link_selector is None else element.select_one(link_selector)
+        if not isinstance(link, Tag) or not link.has_attr("href"):
+            continue
+        document_url = urljoin(page_url, str(link["href"]))
+        if require_pdf and ".pdf" not in urlparse(document_url).path.casefold():
+            continue
+        links.append((element.get_text(" ", strip=True), document_url))
+    return list(dict.fromkeys(links))
 
 
 def normalized(text: str) -> str:
