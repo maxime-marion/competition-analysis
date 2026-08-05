@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup, Tag
 
 
 PAGE_URL = "https://www.athora.com/be/fr/bibliotheque/documents"
-DEFAULT_FUND = "Profilife - Athora DNCA Invest Beyd Semperosa A"
+DEFAULT_FUND = "Athora DNCA Invest Beyd Semperosa A"
 
 
 def normalized(text: str) -> str:

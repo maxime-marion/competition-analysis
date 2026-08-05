@@ -20,10 +20,22 @@ import pymupdf
 import streamlit as st
 from openai import OpenAI
 
-from ag_download import download_fund as download_ag_fund
-from athora_download import download_fund as download_athora_fund
-from nn_download import download_document as download_nn_document
-from vivium_download import download_fund as download_vivium_fund
+from ag_download import (
+    DEFAULT_FUND as AG_DEFAULT_FUND,
+    download_fund as download_ag_fund,
+)
+from athora_download import (
+    DEFAULT_FUND as ATHORA_DEFAULT_FUND,
+    download_fund as download_athora_fund,
+)
+from nn_download import (
+    DEFAULT_DOCUMENT as NN_DEFAULT_DOCUMENT,
+    download_document as download_nn_document,
+)
+from vivium_download import (
+    DEFAULT_FUND as VIVIUM_DEFAULT_FUND,
+    download_fund as download_vivium_fund,
+)
 
 
 Downloader = Callable[[str, Path, str], Path]
@@ -112,25 +124,25 @@ class ExtractionResult:
 INSURERS = {
     "ag": Insurer(
         label="AG",
-        default_fund="AG Life Optitrack Equities",
+        default_fund=AG_DEFAULT_FUND,
         source_url="https://ag.ag-muma.be/fr/allfunds",
         downloader=download_ag_fund,
     ),
     "vivium": Insurer(
         label="Vivium",
-        default_fund="Euro Corporate SRI Bonds",
+        default_fund=VIVIUM_DEFAULT_FUND,
         source_url="https://www.vivium.be/fr/private-individuals/fiches-info",
         downloader=download_vivium_fund,
     ),
     "athora": Insurer(
         label="Athora",
-        default_fund="Athora DNCA Invest Beyd Semperosa A",
+        default_fund=ATHORA_DEFAULT_FUND,
         source_url="https://www.athora.com/be/fr/bibliotheque/documents",
         downloader=download_athora_fund,
     ),
     "nn": Insurer(
         label="NN",
-        default_fund="NN Blackrock Global Allocation Fund",
+        default_fund=NN_DEFAULT_DOCUMENT,
         source_url="https://www.nn.be/nl/legale-documenten",
         downloader=download_nn_document,
     ),
@@ -703,6 +715,21 @@ def render_global_results(results: dict[str, ExtractionResult] | None) -> None:
         [result_row(result) for result in results.values()],
         use_container_width=True,
         hide_index=True,
+        column_config={
+            "Assureur": st.column_config.TextColumn("Assureur", width="small"),
+            "Fonds": st.column_config.TextColumn("Fonds", width="medium"),
+            "Date de version": st.column_config.TextColumn(
+                "Date de version", width="small"
+            ),
+            "Durée recommandée": st.column_config.TextColumn(
+                "Durée recommandée", width="small"
+            ),
+            "Réduction du rendement": st.column_config.TextColumn(
+                "Réduction du rendement", width="small"
+            ),
+            "Confiance": st.column_config.TextColumn("Confiance", width="small"),
+            "Statut": st.column_config.TextColumn("Statut", width="large"),
+        },
     )
     original_column, highlighted_column = st.columns(2)
     original_column.caption("Document original")
