@@ -110,13 +110,15 @@ L'application extrait d'abord le texte du PDF localement, puis envoie ce texte �
 recommandée et la réduction du rendement correspondante. Les passages repérés sont
 ensuite surlignés directement dans la copie PDF téléchargeable.
 
-L'onglet **Global** permet d'importer une sélection de fonds, puis de les récupérer
-et d'extraire toutes leurs dates en un seul clic. Le tableau centralise la date
-détectée, la durée de détention recommandée, la réduction du rendement associée et
-la confiance. Lorsque le tableau de performances propose plusieurs périodes,
-l'extraction retient la plus longue et la réduction du rendement de sa même colonne.
-Les PDF originaux et leurs versions surlignées sont téléchargeables directement sous
-le tableau des résultats.
+L'onglet **Global** affiche dès le départ un champ de nom de fonds prérempli pour
+chaque entité. Modifie les noms directement, puis récupère les documents et extrais
+toutes leurs informations en un seul clic. Plusieurs fonds d'une même entité peuvent
+être ajoutés grâce au bouton dédié, qui crée un champ par fonds. Le tableau de résultats
+centralise la date détectée, la durée de détention recommandée, la réduction du
+rendement associée et la confiance. Lorsque le tableau de performances propose
+plusieurs périodes, l'extraction retient la plus longue et la réduction du rendement
+de sa même colonne. Les PDF originaux et leurs versions surlignées sont téléchargeables
+directement sous le tableau des résultats.
 
 ### Importer une sélection CSV
 
@@ -132,9 +134,10 @@ AG,AG Life Optitrack Defensive
 NN,NN Blackrock Global Allocation Fund
 ```
 
-Les entités prises en charge sont `AG`, `Vivium`, `Athora` et `NN`. L'application
-affiche et valide la sélection importée avant d'activer l'extraction. Une même entité
-peut apparaître plusieurs fois avec des fonds différents.
+Les entités prises en charge sont `AG`, `Vivium`, `Athora` et `NN`. Après validation,
+l'import remplit directement les champs correspondants : aucun tableau de sélection
+supplémentaire n'est affiché. Une même entité peut apparaître plusieurs fois avec des
+fonds différents ; un champ est créé pour chacun de ses fonds.
 
 Les liens source de chaque entité sont affichés au-dessus de l'import CSV. Ils peuvent
 être remplacés par une autre page catalogue avant l'extraction ; le téléchargeur utilise

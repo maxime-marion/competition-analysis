@@ -6,6 +6,7 @@ import csv
 from dataclasses import dataclass
 from datetime import date
 from difflib import SequenceMatcher
+from hashlib import sha256
 from io import StringIO
 import json
 import os
@@ -190,6 +191,38 @@ def parse_fund_csv(content: bytes) -> tuple[list[FundSelection], list[str]]:
         key=lambda selection: (selection.insurer.label.casefold(), selection.fund.casefold())
     )
     return selections, errors
+
+
+def selections_from_fund_fields() -> list[FundSelection]:
+    """Construit la sélection à partir des champs de fonds de l'interface."""
+    selections: list[FundSelection] = []
+    for identifier, insurer in sorted(
+        INSURERS.items(), key=lambda item: item[1].label.casefold()
+    ):
+        field_count = max(1, st.session_state.get(f"global-fund-count-{identifier}", 1))
+        for index in range(field_count):
+            fund = st.session_state.get(f"global-fund-{identifier}-{index}", "").strip()
+            if fund:
+                selections.append(
+                    FundSelection(f"{identifier}-{index}", identifier, insurer, fund)
+                )
+    return selections
+
+
+def clear_global_results() -> None:
+    """Évite d'afficher des résultats qui ne correspondent plus aux champs."""
+    st.session_state.pop("global-version-date-results", None)
+    st.session_state.pop("global-extraction-selections", None)
+
+
+def initialize_global_fund_fields() -> None:
+    """Préremplit une seule sélection par entité à la première ouverture."""
+    if st.session_state.get("global-fund-fields-initialized"):
+        return
+    for identifier, insurer in INSURERS.items():
+        st.session_state[f"global-fund-count-{identifier}"] = 1
+        st.session_state[f"global-fund-{identifier}-0"] = insurer.default_fund
+    st.session_state["global-fund-fields-initialized"] = True
 
 
 def fetch_pdf(insurer: Insurer, fund: str) -> tuple[str, str, bytes]:
@@ -501,6 +534,7 @@ def show_pdf(filename: str, source_url: str, content: bytes, key: str) -> None:
 def render_global_tab() -> None:
     """Charge les documents sélectionnés et centralise leurs dates de version."""
     st.subheader("Fund competition analysis")
+    initialize_global_fund_fields()
 
     st.caption("Liens source utilisés pour récupérer les documents. Ils peuvent être modifiés avant l'extraction.")
     source_urls: dict[str, str] = {}
@@ -527,36 +561,79 @@ def render_global_tab() -> None:
         st.error(error)
 
     uploaded_csv = st.file_uploader(
-        "Importer une sélection de fonds (CSV)",
+        "Importer des noms de fonds (CSV)",
         type="csv",
-        help="Colonnes requises : entity et fund name. Les entités prises en charge sont AG, Vivium, Athora et NN.",
+        help=(
+            "Colonnes requises : entity et fund name. Les noms importés remplissent les "
+            "champs ci-dessous; les entités prises en charge sont AG, Vivium, Athora et NN."
+        ),
     )
-    selections: list[FundSelection] = []
     csv_errors: list[str] = []
     if uploaded_csv is not None:
-        selections, csv_errors = parse_fund_csv(uploaded_csv.getvalue())
+        csv_content = uploaded_csv.getvalue()
+        imported_selections, csv_errors = parse_fund_csv(csv_content)
         if csv_errors:
             for error in csv_errors:
                 st.error(error)
-        else:
-            st.success(f"{len(selections)} fonds importé{'s' if len(selections) > 1 else ''}.")
-            st.caption("Vérifie cette sélection avant de lancer l'extraction.")
-            st.dataframe(
-                [
-                    {"Entité": selection.insurer.label, "Nom du fonds": selection.fund}
-                    for selection in selections
-                ],
-                use_container_width=True,
-                hide_index=True,
-            )
     else:
-        st.info("Importe un fichier CSV pour afficher et valider les fonds à analyser.")
+        st.session_state.pop("global-imported-csv-signature", None)
+
+    if uploaded_csv is not None and not csv_errors:
+        csv_signature = sha256(csv_content).hexdigest()
+        if st.session_state.get("global-imported-csv-signature") != csv_signature:
+            imported_funds = {identifier: [] for identifier in INSURERS}
+            for selection in imported_selections:
+                imported_funds[selection.identifier].append(selection.fund)
+            for identifier, funds in imported_funds.items():
+                previous_count = st.session_state.get(f"global-fund-count-{identifier}", 1)
+                field_count = max(1, len(funds))
+                for index in range(max(previous_count, field_count)):
+                    st.session_state[f"global-fund-{identifier}-{index}"] = (
+                        funds[index] if index < len(funds) else ""
+                    )
+                st.session_state[f"global-fund-count-{identifier}"] = field_count
+            st.session_state["global-imported-csv-signature"] = csv_signature
+            clear_global_results()
+            st.success(
+                f"{len(imported_selections)} fonds importé"
+                f"{'s' if len(imported_selections) > 1 else ''} dans les champs ci-dessous."
+            )
+
+    st.caption(
+        "Saisis les noms de fonds, puis ajoute un champ si nécessaire, ou importe un CSV pour "
+        "remplir automatiquement les champs."
+    )
+    insurers = sorted(INSURERS.items(), key=lambda item: item[1].label.casefold())
+    fund_columns = st.columns(len(insurers))
+    for column, (identifier, insurer) in zip(fund_columns, insurers):
+        with column:
+            st.subheader(insurer.label)
+            field_count_key = f"global-fund-count-{identifier}"
+            field_count = max(1, st.session_state.get(field_count_key, 1))
+            for field_index in range(field_count):
+                st.text_input(
+                    f"{insurer.label} — Nom du fonds {field_index + 1}",
+                    key=f"global-fund-{identifier}-{field_index}",
+                    placeholder="Saisis un nom de fonds",
+                    on_change=clear_global_results,
+                    label_visibility="collapsed",
+                )
+            if st.button(
+                f"Ajouter un fonds {insurer.label}",
+                key=f"add-global-fund-{identifier}",
+                use_container_width=True,
+            ):
+                st.session_state[field_count_key] = field_count + 1
+                clear_global_results()
+                st.rerun()
+
+    selections = selections_from_fund_fields()
 
     if st.button(
         "Récupérer et extraire les informations (IA)",
         type="primary",
         use_container_width=True,
-        disabled=uploaded_csv is None or bool(csv_errors) or bool(source_url_errors),
+        disabled=not selections or bool(csv_errors) or bool(source_url_errors),
     ):
         api_key = configured_openai_key()
         if not api_key:
