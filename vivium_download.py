@@ -61,8 +61,7 @@ def select_fund(links: list[tuple[str, str]], query: str) -> tuple[str, str]:
     if len(matches) == 1:
         return matches[0]
     if not matches:
-        available = "\n".join(f"- {title}" for title, _ in links)
-        raise RuntimeError(f"Fonds introuvable. Fonds disponibles :\n{available}")
+        raise RuntimeError(f"Fonds introuvable : {query}")
     raise RuntimeError(
         "Le nom correspond à plusieurs fonds :\n"
         + "\n".join(f"- {title}" for title, _ in matches)

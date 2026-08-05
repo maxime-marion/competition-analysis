@@ -67,8 +67,7 @@ def select_document(links: list[tuple[str, str]], query: str) -> tuple[str, str]
     if len(matches) == 1:
         return matches[0]
     if not matches:
-        available = "\n".join(f"- {title}" for title, _ in links)
-        raise RuntimeError(f"Document introuvable. Documents disponibles :\n{available}")
+        raise RuntimeError(f"Document introuvable : {query}")
     raise RuntimeError(
         "Le nom correspond à plusieurs documents :\n"
         + "\n".join(f"- {title}" for title, _ in matches)
