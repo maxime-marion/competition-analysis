@@ -14,7 +14,6 @@ from bs4 import BeautifulSoup, Tag
 
 
 PAGE_URL = "https://www.athora.com/be/fr/bibliotheque/documents"
-SECTION_TEXT = "Fonds branche 23 - Profilife"
 DEFAULT_FUND = "Profilife - Athora DNCA Invest Beyd Semperosa A"
 
 
@@ -28,26 +27,15 @@ def normalized(text: str) -> str:
     )
 
 
-def section_links(html: str, page_url: str = PAGE_URL) -> list[tuple[str, str]]:
-    """Retourne les documents de l'accordéon Fonds branche 23 - Profilife."""
+def fund_links(html: str, page_url: str = PAGE_URL) -> list[tuple[str, str]]:
+    """Retourne tous les liens PDF de fonds affichés sur la page Athora.
+
+    La sélection du fonds se fait ensuite sur son nom complet, sans dépendre du
+    libellé ou de la structure d'une section de la page.
+    """
     soup = BeautifulSoup(html, "html.parser")
-    heading = next(
-        (
-            tag
-            for tag in soup.find_all("h3")
-            if normalized(tag.get_text(" ", strip=True)) == normalized(SECTION_TEXT)
-        ),
-        None,
-    )
-    if heading is None:
-        raise RuntimeError(f"La section « {SECTION_TEXT} » est introuvable.")
-
-    panel = heading.find_parent("div", class_="panel")
-    if panel is None:
-        raise RuntimeError("Le contenu de l'accordéon Profilife est introuvable.")
-
     links: list[tuple[str, str]] = []
-    for row in panel.select(".views-field-name"):
+    for row in soup.select(".views-field-name"):
         document_link = row.find("a", href=True)
         if not isinstance(document_link, Tag):
             continue
@@ -86,7 +74,7 @@ def download_fund(query: str, output_dir: Path, page_url: str = PAGE_URL) -> Pat
 
     page_response = session.get(page_url, timeout=30)
     page_response.raise_for_status()
-    title, document_url = select_fund(section_links(page_response.text, page_url), query)
+    title, document_url = select_fund(fund_links(page_response.text, page_url), query)
 
     document_response = session.get(document_url, timeout=60)
     document_response.raise_for_status()

@@ -43,7 +43,7 @@ Le PDF est enregistré dans le dossier `vivium_downloads`. À chaque exécution,
 
 ## Téléchargement d'un document Profilife Athora
 
-Le script Athora cible la rubrique `Documents d’Informations Spécifiques`, puis l'accordéon `Fonds branche 23 - Profilife` :
+Le script Athora recherche directement le nom du fonds dans les documents affichés sur la page, sans dépendre d'une rubrique ou d'un accordéon :
 
 ```bash
 python athora_download.py
