@@ -72,7 +72,7 @@ def select_unique_match(
         raise RuntimeError(f"{missing_label} not found: {query}")
     raise RuntimeError(
         f"The name matches multiple {multiple_label}:\n"
-        + "\n".join(f"- {title}" for title, _ in matches)
+        + "\n".join(f"- {title}: {url}" for title, url in matches)
     )
 
 

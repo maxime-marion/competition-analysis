@@ -20,12 +20,9 @@ DEFAULT_FUND = "Profilife - Athora DNCA Invest Beyd Semperosa A"
 
 
 def select_fund(links: list[tuple[str, str]], query: str) -> tuple[str, str]:
-    """Sélectionne la fiche de fonds par libellé exact ou partiel."""
-    fund_sheets = [
-        item for item in links if "/fundsheetonline/" in item[1].casefold()
-    ]
+    """Sélectionne un fonds par libellé exact ou partiel."""
     return select_unique_match(
-        fund_sheets or links,
+        links,
         query,
         missing_label="Fund",
         multiple_label="documents",
