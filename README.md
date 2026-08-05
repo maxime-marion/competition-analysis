@@ -1,12 +1,20 @@
-# Extraction des documents Allianz
+# Analyse concurrentielle de documents financiers
 
-Ce script ouvre le centre de documents Allianz, sélectionne automatiquement :
+## Téléchargement d'un document Allianz
 
-1. Catégorie : `Investissement`
-2. Le premier produit disponible (actuellement `Allianz Activeinvest`)
-3. Type de document : `Document d’informations clés`
+Le script Allianz interroge directement l'API publique utilisée par le centre de
+documents, sans navigateur ni simulation d'interface :
 
-Puis il affiche les titres trouvés dans le terminal.
+```bash
+python allianz_download.py
+```
+
+Par défaut, il télécharge le DIC `Allianz ActiveInvest`. Un nom partiel unique peut
+être fourni pour sélectionner un autre document :
+
+```bash
+python allianz_download.py --document "ActiveInvest Balanced"
+```
 
 ## Installation
 
@@ -14,16 +22,7 @@ Puis il affiche les titres trouvés dans le terminal.
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-python -m playwright install chromium
 ```
-
-## Exécution
-
-```bash
-python allianz_documents.py
-```
-
-Le site est une application dynamique : Playwright est donc préférable à `requests` seul, car il exécute le JavaScript et interagit avec les listes déroulantes Angular.
 
 ## Téléchargement d'un DIC Vivium
 
@@ -97,16 +96,14 @@ Le PDF est enregistré dans le dossier `baloise_downloads`.
 
 ## Application Streamlit
 
-L'application regroupe les téléchargeurs Vivium, Athora, Baloise, NN et AG dans
-une interface unique. Saisis un fonds, clique sur le bouton de récupération, puis
-télécharge le document original ou sa copie surlignée :
+L'application regroupe les téléchargeurs Allianz, Vivium, Athora, Baloise, NN et AG
+dans une interface unique. Saisis un fonds, clique sur le bouton de récupération,
+puis télécharge le document original ou sa copie surlignée :
 
 ```bash
 python3 -m pip install -r requirements.txt
 streamlit run app.py
 ```
-
-Le portail Allianz reste accessible depuis l'onglet dédié, mais son téléchargement automatisé n'est pas encore activé car le site bloque les navigateurs automatisés.
 
 Les PDF ne sont pas affichés dans l'application. PyMuPDF ajoute les surlignages
 directement dans une copie générée en mémoire, sans stockage permanent. Cette copie
@@ -150,6 +147,7 @@ contenir une ligne par fonds, avec les colonnes `entity` et `fund name` (ou
 
 ```csv
 entity,fund name
+Allianz,Document d’informations clés Allianz ActiveInvest
 AG,AG Life Optitrack Equities
 Vivium,Euro Corporate SRI Bonds
 AG,AG Life Optitrack Defensive
@@ -157,7 +155,8 @@ Baloise,Global Equity Fund
 NN,NN Blackrock Global Allocation Fund
 ```
 
-Les entités prises en charge sont `AG`, `Vivium`, `Athora`, `Baloise` et `NN`. Après validation,
+Les entités prises en charge sont `AG`, `Allianz`, `Vivium`, `Athora`, `Baloise` et
+`NN`. Après validation,
 l'import remplit directement les champs correspondants : aucun tableau de sélection
 supplémentaire n'est affiché. Une même entité peut apparaître plusieurs fois avec des
 fonds différents ; un champ est créé pour chacun de ses fonds.

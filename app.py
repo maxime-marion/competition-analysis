@@ -24,6 +24,11 @@ from ag_download import (
     DEFAULT_FUND as AG_DEFAULT_FUND,
     download_fund as download_ag_fund,
 )
+from allianz_download import (
+    DEFAULT_DOCUMENT as ALLIANZ_DEFAULT_DOCUMENT,
+    PAGE_URL as ALLIANZ_PAGE_URL,
+    download_document as download_allianz_document,
+)
 from athora_download import (
     DEFAULT_FUND as ATHORA_DEFAULT_FUND,
     download_fund as download_athora_fund,
@@ -127,6 +132,12 @@ class ExtractionResult:
 
 
 INSURERS = {
+    "allianz": Insurer(
+        label="Allianz",
+        default_fund=ALLIANZ_DEFAULT_DOCUMENT,
+        source_url=ALLIANZ_PAGE_URL,
+        downloader=download_allianz_document,
+    ),
     "ag": Insurer(
         label="AG",
         default_fund=AG_DEFAULT_FUND,
@@ -527,7 +538,7 @@ def sync_uploaded_csv() -> list[str]:
         type="csv",
         help=(
             "Required columns: entity and fund name. Imported names populate the fields "
-            "below; supported entities are AG, Vivium, Athora, Baloise, and NN."
+            "below; supported entities are AG, Allianz, Vivium, Athora, Baloise, and NN."
         ),
     )
     if uploaded_csv is None:
