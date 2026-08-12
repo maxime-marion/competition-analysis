@@ -46,6 +46,12 @@ from vivium_download import (
     DEFAULT_FUND as VIVIUM_DEFAULT_FUND,
     download_fund as download_vivium_fund,
 )
+from download_common import (
+    create_session,
+    download_pdf,
+    pdf_filename_from_url,
+    sanitized_filename,
+)
 
 
 Downloader = Callable[[str, Path, str], Path]
@@ -125,6 +131,7 @@ class FundSelection:
     identifier: str
     insurer: Insurer
     fund: str
+    document_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -189,6 +196,12 @@ CSV_FUND_HEADERS = {
     "nameofthefund",
     "nomdufonds",
 }
+CSV_DOCUMENT_URL_HEADERS = {
+    "documenturl",
+    "directurl",
+    "documentlink",
+    "url",
+}
 
 
 def normalized_text(value: str) -> str:
@@ -223,6 +236,10 @@ def parse_fund_csv(content: bytes) -> tuple[list[FundSelection], list[str]]:
     }
     entity_header = next((headers[header] for header in CSV_ENTITY_HEADERS if header in headers), None)
     fund_header = next((headers[header] for header in CSV_FUND_HEADERS if header in headers), None)
+    document_url_header = next(
+        (headers[header] for header in CSV_DOCUMENT_URL_HEADERS if header in headers),
+        None,
+    )
     if not entity_header or not fund_header:
         return [], [
             "The CSV file must contain the “entity” and “fund name” columns "
@@ -239,10 +256,20 @@ def parse_fund_csv(content: bytes) -> tuple[list[FundSelection], list[str]]:
     for row_number, row in enumerate(reader, start=2):
         entity = (row.get(entity_header) or "").strip()
         fund = (row.get(fund_header) or "").strip()
-        if not entity and not fund:
+        document_url = (
+            (row.get(document_url_header) or "").strip()
+            if document_url_header
+            else ""
+        )
+        if not entity and not fund and not document_url:
             continue
         if not entity or not fund:
             errors.append(f"Row {row_number}: entity and fund name are required.")
+            continue
+        if document_url and not valid_source_url(document_url):
+            errors.append(
+                f"Row {row_number}: document URL must start with http:// or https://."
+            )
             continue
         match = insurers_by_name.get(normalized_text(entity))
         if not match:
@@ -250,7 +277,15 @@ def parse_fund_csv(content: bytes) -> tuple[list[FundSelection], list[str]]:
             errors.append(f"Row {row_number}: unknown entity “{entity}” ({supported}).")
             continue
         identifier, insurer = match
-        selections.append(FundSelection(f"{identifier}-{row_number}", identifier, insurer, fund))
+        selections.append(
+            FundSelection(
+                f"{identifier}-{row_number}",
+                identifier,
+                insurer,
+                fund,
+                document_url or None,
+            )
+        )
 
     if not selections and not errors:
         errors.append("The CSV file does not contain any funds.")
@@ -270,8 +305,17 @@ def selections_from_fund_fields() -> list[FundSelection]:
         for index in range(field_count):
             fund = st.session_state.get(f"global-fund-{identifier}-{index}", "").strip()
             if fund:
+                document_url = st.session_state.get(
+                    f"global-document-url-{identifier}-{index}", ""
+                ).strip()
                 selections.append(
-                    FundSelection(f"{identifier}-{index}", identifier, insurer, fund)
+                    FundSelection(
+                        f"{identifier}-{index}",
+                        identifier,
+                        insurer,
+                        fund,
+                        document_url or None,
+                    )
                 )
     return selections
 
@@ -288,21 +332,39 @@ def initialize_global_fund_fields() -> None:
     for identifier, insurer in INSURERS.items():
         st.session_state[f"global-fund-count-{identifier}"] = 1
         st.session_state[f"global-fund-{identifier}-0"] = insurer.default_fund
+        st.session_state[f"global-document-url-{identifier}-0"] = ""
     st.session_state["global-fund-fields-initialized"] = True
 
 
 def fetch_pdf(
-    insurer: Insurer, fund: str, source_url: str | None = None
+    insurer: Insurer,
+    fund: str,
+    source_url: str | None = None,
+    document_url: str | None = None,
 ) -> tuple[str, bytes]:
     """Télécharge le PDF dans un dossier temporaire puis retourne ses données."""
-    if insurer.downloader is None:
+    if not document_url and insurer.downloader is None:
         raise ValueError(f"No downloader is configured for {insurer.label}.")
     with TemporaryDirectory(prefix="fund-document-") as temporary_directory:
-        path = insurer.downloader(
-            fund,
-            Path(temporary_directory),
-            source_url or insurer.source_url,
-        )
+        output_dir = Path(temporary_directory)
+        if document_url:
+            fallback = sanitized_filename(fund, "document")
+            if not fallback.casefold().endswith(".pdf"):
+                fallback += ".pdf"
+            filename = pdf_filename_from_url(document_url, fallback)
+            path = download_pdf(
+                create_session("competition-analysis/1.0"),
+                document_url,
+                output_dir,
+                filename,
+            )
+        else:
+            assert insurer.downloader is not None
+            path = insurer.downloader(
+                fund,
+                output_dir,
+                source_url or insurer.source_url,
+            )
         return path.name, path.read_bytes()
 
 
@@ -586,8 +648,9 @@ def sync_uploaded_csv() -> list[str]:
         "Import fund names (CSV)",
         type="csv",
         help=(
-            "Required columns: entity and fund name. Imported names populate the fields "
-            "below; supported entities are AG, Allianz, Vivium, Athora, Baloise, and NN."
+            "Required columns: entity and fund name. The optional document URL column "
+            "bypasses the search by fund name. Supported entities are AG, Allianz, "
+            "Vivium, Athora, Baloise, and NN."
         ),
     )
     if uploaded_csv is None:
@@ -605,15 +668,22 @@ def sync_uploaded_csv() -> list[str]:
     if st.session_state.get("global-imported-csv-signature") == csv_signature:
         return []
 
-    imported_funds = {identifier: [] for identifier in INSURERS}
+    imported_funds: dict[str, list[tuple[str, str]]] = {
+        identifier: [] for identifier in INSURERS
+    }
     for selection in imported_selections:
-        imported_funds[selection.identifier].append(selection.fund)
+        imported_funds[selection.identifier].append(
+            (selection.fund, selection.document_url or "")
+        )
     for identifier, funds in imported_funds.items():
         previous_count = st.session_state.get(f"global-fund-count-{identifier}", 1)
         field_count = max(1, len(funds))
         for index in range(max(previous_count, field_count)):
             st.session_state[f"global-fund-{identifier}-{index}"] = (
-                funds[index] if index < len(funds) else ""
+                funds[index][0] if index < len(funds) else ""
+            )
+            st.session_state[f"global-document-url-{identifier}-{index}"] = (
+                funds[index][1] if index < len(funds) else ""
             )
         st.session_state[f"global-fund-count-{identifier}"] = field_count
 
@@ -626,11 +696,11 @@ def sync_uploaded_csv() -> list[str]:
     return []
 
 
-def render_fund_fields() -> list[FundSelection]:
+def render_fund_fields() -> tuple[list[FundSelection], list[str]]:
     """Affiche les champs dynamiques et retourne les fonds renseignés."""
     st.caption(
-        "Enter fund names, add a field when needed, or import a CSV to populate the fields "
-        "automatically."
+        "Enter fund names and, optionally, a direct document URL. When provided, the "
+        "direct URL is used instead of searching the catalogue by fund name."
     )
     insurers = sorted(INSURERS.items(), key=lambda item: item[1].label.casefold())
     fund_columns = st.columns(len(insurers))
@@ -647,6 +717,13 @@ def render_fund_fields() -> list[FundSelection]:
                     on_change=clear_global_results,
                     label_visibility="collapsed",
                 )
+                st.text_input(
+                    f"{insurer.label} — Direct document URL {field_index + 1}",
+                    key=f"global-document-url-{identifier}-{field_index}",
+                    placeholder="Direct document URL (optional)",
+                    on_change=clear_global_results,
+                    label_visibility="collapsed",
+                )
             if st.button(
                 f"Add {insurer.label} fund",
                 key=f"add-global-fund-{identifier}",
@@ -655,7 +732,16 @@ def render_fund_fields() -> list[FundSelection]:
                 st.session_state[field_count_key] = field_count + 1
                 clear_global_results()
                 st.rerun()
-    return selections_from_fund_fields()
+    selections = selections_from_fund_fields()
+    document_url_errors = [
+        f"The direct document URL for {selection.insurer.label} — {selection.fund} "
+        "must start with http:// or https://."
+        for selection in selections
+        if selection.document_url and not valid_source_url(selection.document_url)
+    ]
+    for error in document_url_errors:
+        st.error(error)
+    return selections, document_url_errors
 
 
 def exception_message(error: Exception) -> str:
@@ -684,6 +770,7 @@ def extract_selections(
                 insurer,
                 selection.fund,
                 source_urls[selection.identifier],
+                selection.document_url,
             )
             progress.progress(
                 (stage_start + 1) / total_stages,
@@ -863,13 +950,18 @@ def render_global_tab() -> None:
     initialize_global_fund_fields()
     source_urls, source_url_errors = render_source_url_fields()
     csv_errors = sync_uploaded_csv()
-    selections = render_fund_fields()
+    selections, document_url_errors = render_fund_fields()
 
     if st.button(
         "Retrieve and extract information (AI)",
         type="primary",
         use_container_width=True,
-        disabled=not selections or bool(csv_errors) or bool(source_url_errors),
+        disabled=(
+            not selections
+            or bool(csv_errors)
+            or bool(source_url_errors)
+            or bool(document_url_errors)
+        ),
     ):
         api_key = configured_openai_key()
         if not api_key:

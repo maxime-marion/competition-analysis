@@ -146,16 +146,17 @@ directement sous le tableau des résultats.
 
 Dans l'onglet **Global**, il est aussi possible d'importer un fichier CSV. Il doit
 contenir une ligne par fonds, avec les colonnes `entity` et `fund name` (ou
-`name of the fund`) :
+`name of the fund`). Une colonne `document URL` peut être ajoutée pour fournir
+directement le PDF :
 
 ```csv
-entity,fund name
-Allianz,Document d’informations clés Allianz ActiveInvest
-AG,AG Life Optitrack Equities
-Vivium,Euro Corporate SRI Bonds
-AG,AG Life Optitrack Defensive
-Baloise,Global Equity Fund
-NN,NN Blackrock Global Allocation Fund
+entity,fund name,document URL
+Allianz,Document d’informations clés Allianz ActiveInvest,
+AG,AG Life Optitrack Equities,https://example.org/documents/ag-optitrack.pdf
+Vivium,Euro Corporate SRI Bonds,
+AG,AG Life Optitrack Defensive,
+Baloise,Global Equity Fund,
+NN,NN Blackrock Global Allocation Fund,
 ```
 
 Les entités prises en charge sont `AG`, `Allianz`, `Vivium`, `Athora`, `Baloise` et
@@ -163,6 +164,11 @@ Les entités prises en charge sont `AG`, `Allianz`, `Vivium`, `Athora`, `Baloise
 l'import remplit directement les champs correspondants : aucun tableau de sélection
 supplémentaire n'est affiché. Une même entité peut apparaître plusieurs fois avec des
 fonds différents ; un champ est créé pour chacun de ses fonds.
+
+Chaque fonds dispose également d'un champ **Direct document URL**. Lorsqu'il est
+renseigné, l'application télécharge cette URL et ne lance pas la recherche du
+document sur base du nom du fonds. Le nom reste utilisé comme libellé dans les
+résultats et pour construire un nom de fichier si l'URL n'en contient pas.
 
 Les liens source de chaque entité sont affichés au-dessus de l'import CSV. Ils peuvent
 être remplacés par une autre page catalogue avant l'extraction ; le téléchargeur utilise
