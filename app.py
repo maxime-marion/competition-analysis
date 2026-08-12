@@ -64,13 +64,20 @@ Extrais les éléments suivants :
   et « Dernière mise à jour » ;
 - la durée de détention recommandée (Recommended Holding Period / RHP) exprimée en années ;
 - la réduction du rendement correspondante (Reduction in Yield / RIY), exprimée en
-  pourcentage.
+  pourcentage ;
+- les frais de gestion (Management Fees), exprimés en pourcentage ;
+- les frais de transaction (Transaction Fees), exprimés en pourcentage.
 
 La durée de détention et la réduction du rendement doivent impérativement provenir
 de la même colonne du même tableau de performances. Si plusieurs périodes sont
 présentées, sélectionne la plus longue — généralement la colonne la plus à droite —
 ainsi que la réduction du rendement de cette même colonne. Ne confonds pas la RIY
 avec un rendement annuel, une performance ou une perte.
+
+Pour les frais de gestion et de transaction, retourne un nombre lorsqu'un seul
+pourcentage est indiqué. Si le document donne explicitement un intervalle de
+pourcentages, retourne ses bornes sous la forme [minimum, maximum]. Ne confonds pas
+ces deux types de frais avec les frais totaux, la RIY ou d'autres coûts.
 
 Réponds uniquement avec un objet JSON valide, sans balises Markdown :
 {
@@ -79,17 +86,21 @@ Réponds uniquement avec un objet JSON valide, sans balises Markdown :
   "confidence": "high", "medium" ou "low",
   "recommended_holding_period_years": nombre d'années ou null,
   "reduction_in_yield_percent": pourcentage numérique, par exemple 1.25 pour 1,25 %, ou null,
+  "management_fees_percent": pourcentage numérique, intervalle [minimum, maximum] ou null,
+  "transaction_fees_percent": pourcentage numérique, intervalle [minimum, maximum] ou null,
   "source_highlights": [
     {
-      "field": "version_date", "holding_period" ou "reduction_in_yield",
+      "field": l'une des valeurs "version_date", "holding_period",
+        "reduction_in_yield", "management_fees" ou "transaction_fees",
       "page": numéro de page indiqué dans le texte,
       "text": "court texte exact à surligner"
     }
   ] ou []
 }
 
-Ajoute un repère distinct pour la date, la période de détention et la réduction du
-rendement lorsqu'elles sont trouvées. Chaque texte doit être une courte suite
+Ajoute un repère distinct pour la date, la période de détention, la réduction du
+rendement, les frais de gestion et les frais de transaction lorsqu'ils sont trouvés.
+Chaque texte doit être une courte suite
 contiguë de 2 à 8 mots recopiée exactement depuis la page indiquée. Ne rassemble
 pas dans un même repère des cellules non contiguës d'un tableau et n'ajoute aucun
 repère pour une information non trouvée.
@@ -339,6 +350,8 @@ def parse_version_date_response(response_text: str) -> dict[str, object]:
             "confidence",
             "recommended_holding_period_years",
             "reduction_in_yield_percent",
+            "management_fees_percent",
+            "transaction_fees_percent",
         )
     }
     if result["version_date"] is not None and not isinstance(result["version_date"], str):
@@ -348,11 +361,31 @@ def parse_version_date_response(response_text: str) -> dict[str, object]:
             isinstance(result[field], bool) or not isinstance(result[field], (int, float))
         ):
             raise ValueError(f"The value “{field}” returned by the model is invalid.")
+    for field in ("management_fees_percent", "transaction_fees_percent"):
+        value = result[field]
+        is_number = isinstance(value, (int, float)) and not isinstance(value, bool)
+        is_interval = (
+            isinstance(value, list)
+            and len(value) == 2
+            and all(
+                isinstance(bound, (int, float)) and not isinstance(bound, bool)
+                for bound in value
+            )
+            and value[0] <= value[1]
+        )
+        if value is not None and not (is_number or is_interval):
+            raise ValueError(f"The value “{field}” returned by the model is invalid.")
     raw_highlights = data.get("source_highlights", [])
     if not isinstance(raw_highlights, list):
         raise ValueError("The highlighting references returned by the model are invalid.")
     highlights: list[dict[str, str | int]] = []
-    allowed_fields = {"version_date", "holding_period", "reduction_in_yield"}
+    allowed_fields = {
+        "version_date",
+        "holding_period",
+        "reduction_in_yield",
+        "management_fees",
+        "transaction_fees",
+    }
     for highlight in raw_highlights:
         if not isinstance(highlight, dict):
             continue
@@ -401,6 +434,22 @@ def format_number(value: float | int | None) -> str | None:
     if value is None:
         return None
     return f"{value:g}"
+
+
+def format_percentage(value: object) -> str | None:
+    """Formate un pourcentage simple ou un intervalle de pourcentages."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return f"{format_number(value)} %"
+    if (
+        isinstance(value, list)
+        and len(value) == 2
+        and all(
+            isinstance(bound, (int, float)) and not isinstance(bound, bool)
+            for bound in value
+        )
+    ):
+        return f"{format_number(value[0])}–{format_number(value[1])} %"
+    return None
 
 
 def highlight_specs(
@@ -688,6 +737,8 @@ def result_row(result: ExtractionResult) -> dict[str, str]:
         "Version date": "—",
         "Recommended holding period": "—",
         "Reduction in yield": "—",
+        "Management fees": "—",
+        "Transaction fees": "—",
         "Confidence": "—",
     }
     if result.error:
@@ -698,6 +749,8 @@ def result_row(result: ExtractionResult) -> dict[str, str]:
     version_date = extraction.get("version_date")
     holding_period = extraction.get("recommended_holding_period_years")
     reduction_in_yield = extraction.get("reduction_in_yield_percent")
+    management_fees = extraction.get("management_fees_percent")
+    transaction_fees = extraction.get("transaction_fees_percent")
     row.update(
         {
             "Version date": (
@@ -715,6 +768,12 @@ def result_row(result: ExtractionResult) -> dict[str, str]:
                 if isinstance(reduction_in_yield, (int, float))
                 and not isinstance(reduction_in_yield, bool)
                 else "No reduction found"
+            ),
+            "Management fees": (
+                format_percentage(management_fees) or "No management fees found"
+            ),
+            "Transaction fees": (
+                format_percentage(transaction_fees) or "No transaction fees found"
             ),
             "Confidence": str(extraction.get("confidence") or "not specified"),
             "Status": (
@@ -748,6 +807,12 @@ def render_global_results(results: dict[str, ExtractionResult] | None) -> None:
             ),
             "Reduction in yield": st.column_config.TextColumn(
                 "Reduction in yield", width="medium"
+            ),
+            "Management fees": st.column_config.TextColumn(
+                "Management fees", width="medium"
+            ),
+            "Transaction fees": st.column_config.TextColumn(
+                "Transaction fees", width="medium"
             ),
             "Confidence": st.column_config.TextColumn("Confidence", width="small"),
             "Status": st.column_config.TextColumn("Status", width="medium"),

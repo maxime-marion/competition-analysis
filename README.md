@@ -126,15 +126,18 @@ Après avoir chargé un document, clique sur
 **Extraire les informations et préparer le PDF surligné (IA)**.
 L'application extrait d'abord le texte du PDF localement, puis envoie ce texte à
 `gpt-5-mini` afin d'identifier une date de version explicite, la durée de détention
-recommandée et la réduction du rendement correspondante. Les passages repérés sont
-ensuite surlignés directement dans la copie PDF téléchargeable.
+recommandée, la réduction du rendement correspondante ainsi que les frais de gestion
+et de transaction, sous forme d'un pourcentage ou d'un intervalle de pourcentages.
+Les passages repérés sont ensuite surlignés
+directement dans la copie PDF téléchargeable.
 
 L'onglet **Global** affiche dès le départ un champ de nom de fonds prérempli pour
 chaque entité. Modifie les noms directement, puis récupère les documents et extrais
 toutes leurs informations en un seul clic. Plusieurs fonds d'une même entité peuvent
 être ajoutés grâce au bouton dédié, qui crée un champ par fonds. Le tableau de résultats
 centralise la date détectée, la durée de détention recommandée, la réduction du
-rendement associée et la confiance. Lorsque le tableau de performances propose
+rendement associée, les frais de gestion, les frais de transaction et la confiance.
+Lorsque le tableau de performances propose
 plusieurs périodes, l'extraction retient la plus longue et la réduction du rendement
 de sa même colonne. Les PDF originaux et leurs versions surlignées sont téléchargeables
 directement sous le tableau des résultats.
