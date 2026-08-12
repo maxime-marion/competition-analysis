@@ -61,10 +61,9 @@ def select_unique_match(
     missing_label: str,
     multiple_label: str,
 ) -> DocumentLink:
-    """Retourne le résultat exact ou partiel unique pour ``query``."""
+    """Retourne l'unique titre contenant ``query`` après normalisation."""
     wanted = normalized(query)
-    exact = [item for item in links if normalized(item[0]) == wanted]
-    matches = exact or [item for item in links if wanted in normalized(item[0])]
+    matches = [item for item in links if wanted in normalized(item[0])]
 
     if len(matches) == 1:
         return matches[0]
