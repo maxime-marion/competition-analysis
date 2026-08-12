@@ -62,7 +62,7 @@ Extrais les éléments suivants :
 - la date de version, de mise à jour, d'édition ou de publication du document ;
   privilégie les libellés explicites tels que « Version », « Date de mise à jour »
   et « Dernière mise à jour » ;
-- la durée de détention recommandée, exprimée en années ;
+- la durée de détention recommandée (Recommended Holding Period / RHP) exprimée en années ;
 - la réduction du rendement correspondante (Reduction in Yield / RIY), exprimée en
   pourcentage.
 
