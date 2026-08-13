@@ -99,7 +99,7 @@ Le PDF est enregistré dans le dossier `baloise_downloads`.
 L'application propose deux onglets alimentés par le même workflow d'analyse :
 
 - **Broker channel** regroupe Allianz, Vivium, Athora, Baloise, NN et AG ;
-- **Bank channel** compare AG (catalogue BNP Paribas Fortis) et Belfius.
+- **Bank channel** compare AG (catalogue BNP Paribas Fortis), Belfius et KBC.
 
 Chaque onglet conserve ses propres champs, liens source et résultats. Saisis un fonds,
 clique sur le bouton de récupération, puis télécharge le document original ou sa copie
@@ -121,6 +121,20 @@ et validé comme PDF. L'URL source reste modifiable dans l'onglet **Bank channel
 L'entité AG du canal bancaire réutilise le téléchargeur MuMa avec son catalogue
 spécifique BNP Paribas Fortis : `https://bnppf.ag-muma.be/fr/allfunds`. Elle est
 indépendante de l'entité AG du canal Broker, qui conserve son URL source actuelle.
+
+### Documents KBC
+
+L'entité KBC utilise uniquement le catalogue public des documents d'informations clés
+publié par KBC. Elle y recherche directement le nom du fonds, puis télécharge le KID
+français, sans appeler l'API de recherche de fonds.
+Un nom partiel unique est accepté. En cas de noms identiques, le message d'erreur
+affiche les correspondances disponibles :
+
+```bash
+python kbc_download.py --fund "KBC Defensive Balanced Classic Shares CAP"
+```
+
+Le PDF est enregistré dans le dossier `kbc_downloads`.
 
 Les PDF ne sont pas affichés dans l'application. PyMuPDF ajoute les surlignages
 directement dans une copie générée en mémoire, sans stockage permanent. Cette copie
@@ -178,7 +192,7 @@ NN,NN Blackrock Global Allocation Fund,
 ```
 
 Le fichier est validé par rapport à l'onglet actif : `AG`, `Allianz`, `Vivium`,
-`Athora`, `Baloise` et `NN` pour **Broker channel**, ou `AG` et `Belfius` pour
+`Athora`, `Baloise` et `NN` pour **Broker channel**, ou `AG`, `Belfius` et `KBC` pour
 **Bank channel**. Après validation,
 l'import remplit directement les champs correspondants : aucun tableau de sélection
 supplémentaire n'est affiché. Une même entité peut apparaître plusieurs fois avec des

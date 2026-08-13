@@ -46,6 +46,11 @@ from belfius_download import (
     PAGE_URL as BELFIUS_PAGE_URL,
     download_fund as download_belfius_fund,
 )
+from kbc_download import (
+    DEFAULT_FUND as KBC_DEFAULT_FUND,
+    PAGE_URL as KBC_PAGE_URL,
+    download_fund as download_kbc_fund,
+)
 from nn_download import (
     DEFAULT_DOCUMENT as NN_DEFAULT_DOCUMENT,
     download_document as download_nn_document,
@@ -208,6 +213,12 @@ BANK_ENTITIES = {
         default_fund=BELFIUS_DEFAULT_FUND,
         source_url=BELFIUS_PAGE_URL,
         downloader=download_belfius_fund,
+    ),
+    "kbc": Insurer(
+        label="KBC",
+        default_fund=KBC_DEFAULT_FUND,
+        source_url=KBC_PAGE_URL,
+        downloader=download_kbc_fund,
     ),
 }
 
