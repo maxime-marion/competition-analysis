@@ -58,6 +58,11 @@ def normalized(text: str) -> str:
     )
 
 
+def compact_normalized(text: str) -> str:
+    """Normalise un libellé en ne conservant que ses caractères alphanumériques."""
+    return "".join(character for character in normalized(text) if character.isalnum())
+
+
 def select_unique_match(
     links: list[DocumentLink],
     query: str,
