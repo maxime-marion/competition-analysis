@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable, Iterable
 import re
 import unicodedata
 from pathlib import Path
@@ -13,6 +14,9 @@ from bs4 import BeautifulSoup, Tag
 
 
 DocumentLink = tuple[str, str]
+LinkExtractor = Callable[[str, str], list[DocumentLink]]
+LinkSelector = Callable[[list[DocumentLink], str], DocumentLink]
+FilenameBuilder = Callable[[str, str], str]
 
 
 def document_links(
@@ -91,6 +95,12 @@ def pdf_filename_from_url(url: str, fallback: str) -> str:
     return sanitized_filename(candidate, fallback)
 
 
+def pdf_filename_from_title(title: str, fallback: str) -> str:
+    """Construit un nom de PDF sûr depuis le libellé d'un document."""
+    filename = sanitized_filename(title, fallback)
+    return filename if filename.casefold().endswith(".pdf") else f"{filename}.pdf"
+
+
 def create_session(user_agent: str) -> requests.Session:
     """Crée une session HTTP identifiée de façon cohérente."""
     session = requests.Session()
@@ -114,6 +124,50 @@ def download_pdf(
     destination = output_dir / filename
     destination.write_bytes(response.content)
     return destination
+
+
+def download_selected_pdf(
+    session: requests.Session,
+    document_url: str,
+    output_dir: Path,
+    filename: str,
+    *,
+    details: Iterable[tuple[str, str]],
+) -> Path:
+    """Télécharge un PDF sélectionné et affiche un résumé homogène."""
+    destination = download_pdf(session, document_url, output_dir, filename)
+    for label, value in details:
+        print(f"{label}: {value}")
+    print(f"URL: {document_url}")
+    print(f"Saved to: {destination.resolve()}")
+    return destination
+
+
+def download_from_html_catalogue(
+    query: str,
+    output_dir: Path,
+    catalogue_url: str,
+    *,
+    user_agent: str,
+    extract_links: LinkExtractor,
+    select_link: LinkSelector,
+    build_filename: FilenameBuilder,
+    item_label: str = "Document",
+) -> Path:
+    """Exécute le flux commun des catalogues HTML à page unique."""
+    session = create_session(user_agent)
+    catalogue_response = session.get(catalogue_url, timeout=30)
+    catalogue_response.raise_for_status()
+    title, document_url = select_link(
+        extract_links(catalogue_response.text, catalogue_url), query
+    )
+    return download_selected_pdf(
+        session,
+        document_url,
+        output_dir,
+        build_filename(title, document_url),
+        details=((item_label, title),),
+    )
 
 
 def parse_download_args(

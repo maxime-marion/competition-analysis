@@ -1,6 +1,20 @@
 import unittest
 
-from download_common import select_unique_match
+from download_common import pdf_filename_from_title, select_unique_match
+
+
+class PdfFilenameTests(unittest.TestCase):
+    def test_title_is_sanitized_and_gets_a_pdf_suffix(self):
+        self.assertEqual(
+            pdf_filename_from_title("Fund: Balanced / Growth", "document.pdf"),
+            "Fund_ Balanced _ Growth.pdf",
+        )
+
+    def test_existing_pdf_suffix_is_not_duplicated(self):
+        self.assertEqual(
+            pdf_filename_from_title("Existing.PDF", "document.pdf"),
+            "Existing.PDF",
+        )
 
 
 class SelectUniqueMatchTests(unittest.TestCase):

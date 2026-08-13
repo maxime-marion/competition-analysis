@@ -12,7 +12,6 @@ import json
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Callable
 import unicodedata
 from urllib.parse import urlparse
 
@@ -20,54 +19,14 @@ import pymupdf
 import streamlit as st
 from openai import OpenAI
 
-from ag_download import (
-    BANK_CATALOGUE_URL as AG_BANK_CATALOGUE_URL,
-    BANK_DEFAULT_FUND as AG_BANK_DEFAULT_FUND,
-    BROKER_CATALOGUE_URL as AG_BROKER_CATALOGUE_URL,
-    DEFAULT_FUND as AG_DEFAULT_FUND,
-    download_fund as download_ag_fund,
-)
-from allianz_download import (
-    DEFAULT_DOCUMENT as ALLIANZ_DEFAULT_DOCUMENT,
-    PAGE_URL as ALLIANZ_PAGE_URL,
-    download_document as download_allianz_document,
-)
-from athora_download import (
-    DEFAULT_FUND as ATHORA_DEFAULT_FUND,
-    download_fund as download_athora_fund,
-)
-from baloise_download import (
-    DEFAULT_FUND as BALOISE_DEFAULT_FUND,
-    PAGE_URL as BALOISE_PAGE_URL,
-    download_fund as download_baloise_fund,
-)
-from belfius_download import (
-    DEFAULT_FUND as BELFIUS_DEFAULT_FUND,
-    PAGE_URL as BELFIUS_PAGE_URL,
-    download_fund as download_belfius_fund,
-)
-from kbc_download import (
-    DEFAULT_FUND as KBC_DEFAULT_FUND,
-    PAGE_URL as KBC_PAGE_URL,
-    download_fund as download_kbc_fund,
-)
-from nn_download import (
-    DEFAULT_DOCUMENT as NN_DEFAULT_DOCUMENT,
-    download_document as download_nn_document,
-)
-from vivium_download import (
-    DEFAULT_FUND as VIVIUM_DEFAULT_FUND,
-    download_fund as download_vivium_fund,
-)
 from download_common import (
     create_session,
     download_pdf,
+    pdf_filename_from_title,
     pdf_filename_from_url,
-    sanitized_filename,
 )
+from entities import BANK_ENTITIES, BROKER_ENTITIES, Insurer
 
-
-Downloader = Callable[[str, Path, str], Path]
 
 DOCUMENT_EXTRACTION_MODEL = "gpt-5-mini"
 DOCUMENT_EXTRACTION_PROMPT = """Tu analyses un document d'information financière
@@ -129,14 +88,6 @@ Texte du document :
 
 
 @dataclass(frozen=True)
-class Insurer:
-    label: str
-    default_fund: str
-    source_url: str
-    downloader: Downloader | None = None
-
-
-@dataclass(frozen=True)
 class FundSelection:
     """Un fonds prêt à être téléchargé pour un assureur pris en charge."""
 
@@ -161,69 +112,6 @@ class ExtractionResult:
     error: str | None = None
     highlight_error: str | None = None
 
-
-BROKER_ENTITIES = {
-    "allianz": Insurer(
-        label="Allianz",
-        default_fund=ALLIANZ_DEFAULT_DOCUMENT,
-        source_url=ALLIANZ_PAGE_URL,
-        downloader=download_allianz_document,
-    ),
-    "ag": Insurer(
-        label="AG",
-        default_fund=AG_DEFAULT_FUND,
-        source_url=AG_BROKER_CATALOGUE_URL,
-        downloader=download_ag_fund,
-    ),
-    "vivium": Insurer(
-        label="Vivium",
-        default_fund=VIVIUM_DEFAULT_FUND,
-        source_url="https://www.vivium.be/fr/private-individuals/fiches-info",
-        downloader=download_vivium_fund,
-    ),
-    "athora": Insurer(
-        label="Athora",
-        default_fund=ATHORA_DEFAULT_FUND,
-        source_url="https://www.athora.com/be/fr/bibliotheque/documents",
-        downloader=download_athora_fund,
-    ),
-    "baloise": Insurer(
-        label="Baloise",
-        default_fund=BALOISE_DEFAULT_FUND,
-        source_url=BALOISE_PAGE_URL,
-        downloader=download_baloise_fund,
-    ),
-    "nn": Insurer(
-        label="NN",
-        default_fund=NN_DEFAULT_DOCUMENT,
-        source_url="https://www.nn.be/fr/documents-legaux",
-        downloader=download_nn_document,
-    ),
-}
-
-BANK_ENTITIES = {
-    "ag": Insurer(
-        label="AG",
-        default_fund=AG_BANK_DEFAULT_FUND,
-        source_url=AG_BANK_CATALOGUE_URL,
-        downloader=download_ag_fund,
-    ),
-    "belfius": Insurer(
-        label="Belfius",
-        default_fund=BELFIUS_DEFAULT_FUND,
-        source_url=BELFIUS_PAGE_URL,
-        downloader=download_belfius_fund,
-    ),
-    "kbc": Insurer(
-        label="KBC",
-        default_fund=KBC_DEFAULT_FUND,
-        source_url=KBC_PAGE_URL,
-        downloader=download_kbc_fund,
-    ),
-}
-
-# Backwards-compatible name for callers that use the original broker configuration.
-INSURERS = BROKER_ENTITIES
 
 CSV_ENTITY_HEADERS = {"entity", "entite", "assureur"}
 CSV_FUND_HEADERS = {
@@ -255,7 +143,7 @@ def parse_fund_csv(
     content: bytes, entities: dict[str, Insurer] | None = None
 ) -> tuple[list[FundSelection], list[str]]:
     """Lit le CSV importé et valide ses entités avant toute extraction."""
-    entities = INSURERS if entities is None else entities
+    entities = BROKER_ENTITIES if entities is None else entities
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -412,9 +300,7 @@ def fetch_pdf(
     with TemporaryDirectory(prefix="fund-document-") as temporary_directory:
         output_dir = Path(temporary_directory)
         if document_url:
-            fallback = sanitized_filename(fund, "document")
-            if not fallback.casefold().endswith(".pdf"):
-                fallback += ".pdf"
+            fallback = pdf_filename_from_title(fund, "document.pdf")
             filename = pdf_filename_from_url(document_url, fallback)
             path = download_pdf(
                 create_session("competition-analysis/1.0"),
@@ -907,7 +793,7 @@ def result_row(
     result: ExtractionResult, entities: dict[str, Insurer] | None = None
 ) -> dict[str, str]:
     """Convertit un résultat structuré en ligne de tableau."""
-    entities = INSURERS if entities is None else entities
+    entities = BROKER_ENTITIES if entities is None else entities
     row = {
         "Entity": entities[result.identifier].label,
         "Fund": result.fund,

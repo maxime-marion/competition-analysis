@@ -10,11 +10,10 @@ from bs4 import BeautifulSoup, Tag
 
 from download_common import (
     DocumentLink,
-    create_session,
-    download_pdf,
+    download_from_html_catalogue,
     normalized,
     parse_download_args,
-    sanitized_filename,
+    pdf_filename_from_title,
     select_unique_match,
 )
 
@@ -78,7 +77,7 @@ def select_fund(links: list[DocumentLink], query: str) -> DocumentLink:
 
 
 def pdf_filename(title: str) -> str:
-    return f"{sanitized_filename(title, 'eid-baloise')}.pdf"
+    return pdf_filename_from_title(title, "eid-baloise.pdf")
 
 
 def eid_catalogue_url(page_url: str) -> str:
@@ -93,26 +92,16 @@ def eid_catalogue_url(page_url: str) -> str:
 
 def download_fund(query: str, output_dir: Path, page_url: str = PAGE_URL) -> Path:
     """Trouve puis télécharge l'EID public du fonds Baloise demandé."""
-    session = create_session("Baloise-EID-Downloader/1.0")
     catalogue_url = eid_catalogue_url(page_url)
-
-    catalogue_response = session.get(catalogue_url, timeout=30)
-    catalogue_response.raise_for_status()
-    title, document_url = select_fund(
-        catalogue_documents(catalogue_response.text, catalogue_url), query
-    )
-
-    destination = download_pdf(
-        session,
-        document_url,
+    return download_from_html_catalogue(
+        query,
         output_dir,
-        pdf_filename(title),
+        catalogue_url,
+        user_agent="Baloise-EID-Downloader/1.0",
+        extract_links=catalogue_documents,
+        select_link=select_fund,
+        build_filename=lambda title, _url: pdf_filename(title),
     )
-
-    print(f"Document: {title}")
-    print(f"URL: {document_url}")
-    print(f"Saved to: {destination.resolve()}")
-    return destination
 
 
 def parse_args():

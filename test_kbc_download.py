@@ -51,8 +51,8 @@ class KbcCatalogueTests(unittest.TestCase):
             return destination
 
         with TemporaryDirectory() as temporary_directory, patch(
-            "kbc_download.create_session", return_value=session
-        ), patch("kbc_download.download_pdf", side_effect=write_pdf):
+            "download_common.create_session", return_value=session
+        ), patch("download_common.download_pdf", side_effect=write_pdf):
             destination = download_fund(
                 "Defensive Balanced",
                 Path(temporary_directory),

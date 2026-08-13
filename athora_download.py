@@ -6,9 +6,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from download_common import (
-    create_session,
     document_links,
-    download_pdf,
+    download_from_html_catalogue,
     parse_download_args,
     pdf_filename_from_url,
     select_unique_match,
@@ -33,27 +32,26 @@ def pdf_filename(url: str) -> str:
     return pdf_filename_from_url(url, "document-athora.pdf")
 
 
-def download_fund(query: str, output_dir: Path, page_url: str = PAGE_URL) -> Path:
-    session = create_session("Athora-DIS-Downloader/1.0")
-
-    page_response = session.get(page_url, timeout=30)
-    page_response.raise_for_status()
-    title, document_url = select_fund(
-        document_links(
-            page_response.text,
-            page_url,
-            selector=".views-field-name",
-            link_selector="a[href]",
-        ),
-        query,
+def fund_links(html: str, page_url: str) -> list[tuple[str, str]]:
+    """Extrait les documents de fonds de la vue Athora."""
+    return document_links(
+        html,
+        page_url,
+        selector=".views-field-name",
+        link_selector="a[href]",
     )
 
-    destination = download_pdf(session, document_url, output_dir, pdf_filename(document_url))
 
-    print(f"Document: {title}")
-    print(f"URL: {document_url}")
-    print(f"Saved to: {destination.resolve()}")
-    return destination
+def download_fund(query: str, output_dir: Path, page_url: str = PAGE_URL) -> Path:
+    return download_from_html_catalogue(
+        query,
+        output_dir,
+        page_url,
+        user_agent="Athora-DIS-Downloader/1.0",
+        extract_links=fund_links,
+        select_link=select_fund,
+        build_filename=lambda _title, url: pdf_filename(url),
+    )
 
 
 def parse_args():

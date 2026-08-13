@@ -6,12 +6,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from download_common import (
-    create_session,
     document_links,
-    download_pdf,
+    download_from_html_catalogue,
     normalized,
     parse_download_args,
-    sanitized_filename,
+    pdf_filename_from_title,
     select_unique_match,
 )
 
@@ -36,30 +35,29 @@ def select_document(links: list[tuple[str, str]], query: str) -> tuple[str, str]
 
 
 def pdf_filename(title: str) -> str:
-    return f"{sanitized_filename(title, 'document-nn')}.pdf"
+    return pdf_filename_from_title(title, "document-nn.pdf")
+
+
+def catalogue_documents(html: str, page_url: str) -> list[tuple[str, str]]:
+    """Extrait les liens de téléchargement affichés par NN."""
+    return document_links(
+        html,
+        page_url,
+        selector="a.download-link[href]",
+        require_pdf=False,
+    )
 
 
 def download_document(query: str, output_dir: Path, page_url: str = PAGE_URL) -> Path:
-    session = create_session("NN-Document-Downloader/1.0")
-
-    page_response = session.get(page_url, timeout=30)
-    page_response.raise_for_status()
-    title, document_url = select_document(
-        document_links(
-            page_response.text,
-            page_url,
-            selector="a.download-link[href]",
-            require_pdf=False,
-        ),
+    return download_from_html_catalogue(
         query,
+        output_dir,
+        page_url,
+        user_agent="NN-Document-Downloader/1.0",
+        extract_links=catalogue_documents,
+        select_link=select_document,
+        build_filename=lambda title, _url: pdf_filename(title),
     )
-
-    destination = download_pdf(session, document_url, output_dir, pdf_filename(title))
-
-    print(f"Document: {title}")
-    print(f"URL: {document_url}")
-    print(f"Saved to: {destination.resolve()}")
-    return destination
 
 
 def parse_args():

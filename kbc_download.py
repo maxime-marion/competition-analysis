@@ -10,8 +10,7 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup, Tag
 
 from download_common import (
-    create_session,
-    download_pdf,
+    download_from_html_catalogue,
     parse_download_args,
     pdf_filename_from_url,
     select_unique_match,
@@ -108,23 +107,18 @@ def download_fund(
     query: str, output_dir: Path, page_url: str = PAGE_URL
 ) -> Path:
     """Find and download the French KID for a KBC fund."""
-    session = create_session("KBC-KID-Downloader/1.0")
-
-    source_response = session.get(page_url, timeout=30)
-    source_response.raise_for_status()
-    links = kid_links(source_response.text, page_url)
-    fund_title, document_url = select_kid(links, query)
-    destination = download_pdf(
-        session,
-        document_url,
+    return download_from_html_catalogue(
+        query,
         output_dir,
-        pdf_filename_from_url(document_url, "kid-kbc.pdf"),
+        page_url,
+        user_agent="KBC-KID-Downloader/1.0",
+        extract_links=kid_links,
+        select_link=select_kid,
+        build_filename=lambda _title, url: pdf_filename_from_url(
+            url, "kid-kbc.pdf"
+        ),
+        item_label="Fund",
     )
-
-    print(f"Fund: {fund_title}")
-    print(f"URL: {document_url}")
-    print(f"Saved to: {destination.resolve()}")
-    return destination
 
 
 def parse_args():

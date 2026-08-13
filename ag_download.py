@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup, Tag
 from download_common import (
     create_session,
     document_links,
-    download_pdf,
+    download_selected_pdf,
     normalized,
     pdf_filename_from_url,
     select_unique_match,
@@ -105,13 +105,13 @@ def download_fund(
     fund_response.raise_for_status()
     document_title, document_url = select_kid(kid_links(fund_response.text, fund_url))
 
-    destination = download_pdf(session, document_url, output_dir, pdf_filename(document_url))
-
-    print(f"Fund: {fund_title}")
-    print(f"Document: {document_title}")
-    print(f"URL: {document_url}")
-    print(f"Saved to: {destination.resolve()}")
-    return destination
+    return download_selected_pdf(
+        session,
+        document_url,
+        output_dir,
+        pdf_filename(document_url),
+        details=(("Fund", fund_title), ("Document", document_title)),
+    )
 
 
 def parse_args():

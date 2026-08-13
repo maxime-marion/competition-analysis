@@ -10,10 +10,10 @@ from uuid import uuid4
 from download_common import (
     DocumentLink,
     create_session,
-    download_pdf,
+    download_selected_pdf,
     normalized,
     parse_download_args,
-    sanitized_filename,
+    pdf_filename_from_title,
     select_unique_match,
 )
 
@@ -89,7 +89,7 @@ def select_document(links: list[DocumentLink], query: str) -> DocumentLink:
 
 
 def pdf_filename(title: str) -> str:
-    return f"{sanitized_filename(title, 'document-allianz')}.pdf"
+    return pdf_filename_from_title(title, "document-allianz.pdf")
 
 
 def download_document(
@@ -113,17 +113,13 @@ def download_document(
         query,
     )
 
-    destination = download_pdf(
+    return download_selected_pdf(
         session,
         document_url,
         output_dir,
         pdf_filename(title),
+        details=(("Document", title),),
     )
-
-    print(f"Document: {title}")
-    print(f"URL: {document_url}")
-    print(f"Saved to: {destination.resolve()}")
-    return destination
 
 
 def parse_args():

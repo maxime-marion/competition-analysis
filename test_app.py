@@ -4,11 +4,9 @@ import unittest
 from unittest.mock import Mock, patch
 
 from ag_download import BANK_CATALOGUE_URL, BROKER_CATALOGUE_URL
+from entities import BANK_ENTITIES, BROKER_ENTITIES, Insurer
 from kbc_download import PAGE_URL as KBC_PAGE_URL
 from app import (
-    BANK_ENTITIES,
-    BROKER_ENTITIES,
-    Insurer,
     channel_state_key,
     fetch_pdf,
     format_percentage,
