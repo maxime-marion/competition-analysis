@@ -21,6 +21,9 @@ import streamlit as st
 from openai import OpenAI
 
 from ag_download import (
+    BANK_CATALOGUE_URL as AG_BANK_CATALOGUE_URL,
+    BANK_DEFAULT_FUND as AG_BANK_DEFAULT_FUND,
+    BROKER_CATALOGUE_URL as AG_BROKER_CATALOGUE_URL,
     DEFAULT_FUND as AG_DEFAULT_FUND,
     download_fund as download_ag_fund,
 )
@@ -37,6 +40,11 @@ from baloise_download import (
     DEFAULT_FUND as BALOISE_DEFAULT_FUND,
     PAGE_URL as BALOISE_PAGE_URL,
     download_fund as download_baloise_fund,
+)
+from belfius_download import (
+    DEFAULT_FUND as BELFIUS_DEFAULT_FUND,
+    PAGE_URL as BELFIUS_PAGE_URL,
+    download_fund as download_belfius_fund,
 )
 from nn_download import (
     DEFAULT_DOCUMENT as NN_DEFAULT_DOCUMENT,
@@ -149,7 +157,7 @@ class ExtractionResult:
     highlight_error: str | None = None
 
 
-INSURERS = {
+BROKER_ENTITIES = {
     "allianz": Insurer(
         label="Allianz",
         default_fund=ALLIANZ_DEFAULT_DOCUMENT,
@@ -159,7 +167,7 @@ INSURERS = {
     "ag": Insurer(
         label="AG",
         default_fund=AG_DEFAULT_FUND,
-        source_url="https://ag.ag-muma.be/fr/allfunds",
+        source_url=AG_BROKER_CATALOGUE_URL,
         downloader=download_ag_fund,
     ),
     "vivium": Insurer(
@@ -188,6 +196,24 @@ INSURERS = {
     ),
 }
 
+BANK_ENTITIES = {
+    "ag": Insurer(
+        label="AG",
+        default_fund=AG_BANK_DEFAULT_FUND,
+        source_url=AG_BANK_CATALOGUE_URL,
+        downloader=download_ag_fund,
+    ),
+    "belfius": Insurer(
+        label="Belfius",
+        default_fund=BELFIUS_DEFAULT_FUND,
+        source_url=BELFIUS_PAGE_URL,
+        downloader=download_belfius_fund,
+    ),
+}
+
+# Backwards-compatible name for callers that use the original broker configuration.
+INSURERS = BROKER_ENTITIES
+
 CSV_ENTITY_HEADERS = {"entity", "entite", "assureur"}
 CSV_FUND_HEADERS = {
     "fund",
@@ -214,8 +240,11 @@ def normalized_text(value: str) -> str:
     )
 
 
-def parse_fund_csv(content: bytes) -> tuple[list[FundSelection], list[str]]:
+def parse_fund_csv(
+    content: bytes, entities: dict[str, Insurer] | None = None
+) -> tuple[list[FundSelection], list[str]]:
     """Lit le CSV importé et valide ses entités avant toute extraction."""
+    entities = INSURERS if entities is None else entities
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -248,7 +277,7 @@ def parse_fund_csv(content: bytes) -> tuple[list[FundSelection], list[str]]:
 
     insurers_by_name = {
         normalized_text(name): (identifier, insurer)
-        for identifier, insurer in INSURERS.items()
+        for identifier, insurer in entities.items()
         for name in (identifier, insurer.label)
     }
     selections: list[FundSelection] = []
@@ -273,7 +302,7 @@ def parse_fund_csv(content: bytes) -> tuple[list[FundSelection], list[str]]:
             continue
         match = insurers_by_name.get(normalized_text(entity))
         if not match:
-            supported = ", ".join(insurer.label for insurer in INSURERS.values())
+            supported = ", ".join(insurer.label for insurer in entities.values())
             errors.append(f"Row {row_number}: unknown entity “{entity}” ({supported}).")
             continue
         identifier, insurer = match
@@ -295,18 +324,35 @@ def parse_fund_csv(content: bytes) -> tuple[list[FundSelection], list[str]]:
     return selections, errors
 
 
-def selections_from_fund_fields() -> list[FundSelection]:
+def channel_state_key(channel_key: str, name: str) -> str:
+    """Build a Streamlit state key isolated to one analysis channel."""
+    return f"{channel_key}-{name}"
+
+
+def selections_from_fund_fields(
+    channel_key: str, entities: dict[str, Insurer]
+) -> list[FundSelection]:
     """Construit la sélection à partir des champs de fonds de l'interface."""
     selections: list[FundSelection] = []
     for identifier, insurer in sorted(
-        INSURERS.items(), key=lambda item: item[1].label.casefold()
+        entities.items(), key=lambda item: item[1].label.casefold()
     ):
-        field_count = max(1, st.session_state.get(f"global-fund-count-{identifier}", 1))
+        field_count = max(
+            1,
+            st.session_state.get(
+                channel_state_key(channel_key, f"fund-count-{identifier}"), 1
+            ),
+        )
         for index in range(field_count):
-            fund = st.session_state.get(f"global-fund-{identifier}-{index}", "").strip()
+            fund = st.session_state.get(
+                channel_state_key(channel_key, f"fund-{identifier}-{index}"), ""
+            ).strip()
             if fund:
                 document_url = st.session_state.get(
-                    f"global-document-url-{identifier}-{index}", ""
+                    channel_state_key(
+                        channel_key, f"document-url-{identifier}-{index}"
+                    ),
+                    "",
                 ).strip()
                 selections.append(
                     FundSelection(
@@ -320,20 +366,27 @@ def selections_from_fund_fields() -> list[FundSelection]:
     return selections
 
 
-def clear_global_results() -> None:
+def clear_channel_results(channel_key: str) -> None:
     """Évite d'afficher des résultats qui ne correspondent plus aux champs."""
-    st.session_state.pop("global-extraction-results", None)
+    st.session_state.pop(channel_state_key(channel_key, "extraction-results"), None)
 
 
-def initialize_global_fund_fields() -> None:
+def initialize_fund_fields(
+    channel_key: str, entities: dict[str, Insurer]
+) -> None:
     """Préremplit une seule sélection par entité à la première ouverture."""
-    if st.session_state.get("global-fund-fields-initialized"):
+    initialized_key = channel_state_key(channel_key, "fund-fields-initialized")
+    if st.session_state.get(initialized_key):
         return
-    for identifier, insurer in INSURERS.items():
-        st.session_state[f"global-fund-count-{identifier}"] = 1
-        st.session_state[f"global-fund-{identifier}-0"] = insurer.default_fund
-        st.session_state[f"global-document-url-{identifier}-0"] = ""
-    st.session_state["global-fund-fields-initialized"] = True
+    for identifier, insurer in entities.items():
+        st.session_state[channel_state_key(channel_key, f"fund-count-{identifier}")] = 1
+        st.session_state[
+            channel_state_key(channel_key, f"fund-{identifier}-0")
+        ] = insurer.default_fund
+        st.session_state[
+            channel_state_key(channel_key, f"document-url-{identifier}-0")
+        ] = ""
+    st.session_state[initialized_key] = True
 
 
 def fetch_pdf(
@@ -613,7 +666,9 @@ def create_highlighted_pdf(
         return document.tobytes(garbage=4, deflate=True), highlighted_sources
 
 
-def render_source_url_fields() -> tuple[dict[str, str], list[str]]:
+def render_source_url_fields(
+    channel_key: str, entities: dict[str, Insurer]
+) -> tuple[dict[str, str], list[str]]:
     """Affiche et valide les URL des catalogues des assureurs."""
     st.caption("Source links used to retrieve documents. You can edit them before extraction.")
     source_urls: dict[str, str] = {}
@@ -621,19 +676,20 @@ def render_source_url_fields() -> tuple[dict[str, str], list[str]]:
     entity_column.caption("Entity")
     url_column.caption("Source URL")
     for identifier, insurer in sorted(
-        INSURERS.items(), key=lambda item: item[1].label.casefold()
+        entities.items(), key=lambda item: item[1].label.casefold()
     ):
         entity_column, url_column = st.columns([1, 5])
         entity_column.write(insurer.label)
         source_urls[identifier] = url_column.text_input(
             f"{insurer.label} source URL",
             value=insurer.source_url,
-            key=f"source-url-{identifier}",
-            on_change=clear_global_results,
+            key=channel_state_key(channel_key, f"source-url-{identifier}"),
+            on_change=clear_channel_results,
+            args=(channel_key,),
             label_visibility="collapsed",
         ).strip()
     source_url_errors = [
-        f"The {INSURERS[identifier].label} source URL must start with http:// or https://."
+        f"The {entities[identifier].label} source URL must start with http:// or https://."
         for identifier, source_url in source_urls.items()
         if not valid_source_url(source_url)
     ]
@@ -642,53 +698,63 @@ def render_source_url_fields() -> tuple[dict[str, str], list[str]]:
     return source_urls, source_url_errors
 
 
-def sync_uploaded_csv() -> list[str]:
+def sync_uploaded_csv(
+    channel_key: str, entities: dict[str, Insurer]
+) -> list[str]:
     """Valide un CSV et synchronise son contenu avec les champs de fonds."""
     uploaded_csv = st.file_uploader(
         "Import fund names (CSV)",
         type="csv",
+        key=channel_state_key(channel_key, "csv-upload"),
         help=(
             "Required columns: entity and fund name. The optional document URL column "
-            "bypasses the search by fund name. Supported entities are AG, Allianz, "
-            "Vivium, Athora, Baloise, and NN."
+            "bypasses the search by fund name. Supported entities in this channel: "
+            + ", ".join(entity.label for entity in entities.values())
+            + "."
         ),
     )
+    imported_signature_key = channel_state_key(channel_key, "imported-csv-signature")
     if uploaded_csv is None:
-        st.session_state.pop("global-imported-csv-signature", None)
+        st.session_state.pop(imported_signature_key, None)
         return []
 
     csv_content = uploaded_csv.getvalue()
-    imported_selections, csv_errors = parse_fund_csv(csv_content)
+    imported_selections, csv_errors = parse_fund_csv(csv_content, entities)
     for error in csv_errors:
         st.error(error)
     if csv_errors:
         return csv_errors
 
     csv_signature = sha256(csv_content).hexdigest()
-    if st.session_state.get("global-imported-csv-signature") == csv_signature:
+    if st.session_state.get(imported_signature_key) == csv_signature:
         return []
 
     imported_funds: dict[str, list[tuple[str, str]]] = {
-        identifier: [] for identifier in INSURERS
+        identifier: [] for identifier in entities
     }
     for selection in imported_selections:
         imported_funds[selection.identifier].append(
             (selection.fund, selection.document_url or "")
         )
     for identifier, funds in imported_funds.items():
-        previous_count = st.session_state.get(f"global-fund-count-{identifier}", 1)
+        fund_count_key = channel_state_key(channel_key, f"fund-count-{identifier}")
+        previous_count = st.session_state.get(fund_count_key, 1)
         field_count = max(1, len(funds))
         for index in range(max(previous_count, field_count)):
-            st.session_state[f"global-fund-{identifier}-{index}"] = (
+            st.session_state[
+                channel_state_key(channel_key, f"fund-{identifier}-{index}")
+            ] = (
                 funds[index][0] if index < len(funds) else ""
             )
-            st.session_state[f"global-document-url-{identifier}-{index}"] = (
+            st.session_state[
+                channel_state_key(channel_key, f"document-url-{identifier}-{index}")
+            ] = (
                 funds[index][1] if index < len(funds) else ""
             )
-        st.session_state[f"global-fund-count-{identifier}"] = field_count
+        st.session_state[fund_count_key] = field_count
 
-    st.session_state["global-imported-csv-signature"] = csv_signature
-    clear_global_results()
+    st.session_state[imported_signature_key] = csv_signature
+    clear_channel_results(channel_key)
     st.success(
         f"{len(imported_selections)} fund"
         f"{'s' if len(imported_selections) > 1 else ''} imported into the fields below."
@@ -696,43 +762,53 @@ def sync_uploaded_csv() -> list[str]:
     return []
 
 
-def render_fund_fields() -> tuple[list[FundSelection], list[str]]:
+def render_fund_fields(
+    channel_key: str, entities: dict[str, Insurer]
+) -> tuple[list[FundSelection], list[str]]:
     """Affiche les champs dynamiques et retourne les fonds renseignés."""
     st.caption(
         "Enter fund names and, optionally, a direct document URL. When provided, the "
         "direct URL is used instead of searching the catalogue by fund name."
     )
-    insurers = sorted(INSURERS.items(), key=lambda item: item[1].label.casefold())
+    insurers = sorted(entities.items(), key=lambda item: item[1].label.casefold())
     fund_columns = st.columns(len(insurers))
     for column, (identifier, insurer) in zip(fund_columns, insurers):
         with column:
             st.subheader(insurer.label)
-            field_count_key = f"global-fund-count-{identifier}"
+            field_count_key = channel_state_key(
+                channel_key, f"fund-count-{identifier}"
+            )
             field_count = max(1, st.session_state.get(field_count_key, 1))
             for field_index in range(field_count):
                 st.text_input(
                     f"{insurer.label} — Fund name {field_index + 1}",
-                    key=f"global-fund-{identifier}-{field_index}",
+                    key=channel_state_key(
+                        channel_key, f"fund-{identifier}-{field_index}"
+                    ),
                     placeholder="Enter a fund name",
-                    on_change=clear_global_results,
+                    on_change=clear_channel_results,
+                    args=(channel_key,),
                     label_visibility="collapsed",
                 )
                 st.text_input(
                     f"{insurer.label} — Direct document URL {field_index + 1}",
-                    key=f"global-document-url-{identifier}-{field_index}",
+                    key=channel_state_key(
+                        channel_key, f"document-url-{identifier}-{field_index}"
+                    ),
                     placeholder="Direct document URL (optional)",
-                    on_change=clear_global_results,
+                    on_change=clear_channel_results,
+                    args=(channel_key,),
                     label_visibility="collapsed",
                 )
             if st.button(
                 f"Add {insurer.label} fund",
-                key=f"add-global-fund-{identifier}",
+                key=channel_state_key(channel_key, f"add-fund-{identifier}"),
                 use_container_width=True,
             ):
                 st.session_state[field_count_key] = field_count + 1
-                clear_global_results()
+                clear_channel_results(channel_key)
                 st.rerun()
-    selections = selections_from_fund_fields()
+    selections = selections_from_fund_fields(channel_key, entities)
     document_url_errors = [
         f"The direct document URL for {selection.insurer.label} — {selection.fund} "
         "must start with http:// or https://."
@@ -816,10 +892,13 @@ def extract_selections(
     return results
 
 
-def result_row(result: ExtractionResult) -> dict[str, str]:
+def result_row(
+    result: ExtractionResult, entities: dict[str, Insurer] | None = None
+) -> dict[str, str]:
     """Convertit un résultat structuré en ligne de tableau."""
+    entities = INSURERS if entities is None else entities
     row = {
-        "Insurer": INSURERS[result.identifier].label,
+        "Entity": entities[result.identifier].label,
         "Fund": result.fund,
         "Version date": "—",
         "Recommended holding period": "—",
@@ -873,18 +952,22 @@ def result_row(result: ExtractionResult) -> dict[str, str]:
     return row
 
 
-def render_global_results(results: dict[str, ExtractionResult] | None) -> None:
+def render_analysis_results(
+    channel_key: str,
+    entities: dict[str, Insurer],
+    results: dict[str, ExtractionResult] | None,
+) -> None:
     """Affiche le tableau et les téléchargements des extractions."""
     if not results:
         st.info("No bulk extraction has been run yet.")
         return
 
     st.dataframe(
-        [result_row(result) for result in results.values()],
+        [result_row(result, entities) for result in results.values()],
         use_container_width=True,
         hide_index=True,
         column_config={
-            "Insurer": st.column_config.TextColumn("Insurer", width="small"),
+            "Entity": st.column_config.TextColumn("Entity", width="small"),
             "Fund": st.column_config.TextColumn("Fund", width="medium"),
             "Version date": st.column_config.TextColumn(
                 "Version date", width="medium"
@@ -908,7 +991,7 @@ def render_global_results(results: dict[str, ExtractionResult] | None) -> None:
     for result in results.values():
         if not result.error:
             continue
-        insurer = INSURERS[result.identifier]
+        insurer = entities[result.identifier]
         st.error(f"{insurer.label} — {result.fund} : {result.error}")
 
     original_column, highlighted_column = st.columns(2)
@@ -916,7 +999,7 @@ def render_global_results(results: dict[str, ExtractionResult] | None) -> None:
     highlighted_column.caption("Highlighted document")
 
     for selection_key, result in results.items():
-        insurer = INSURERS[result.identifier]
+        insurer = entities[result.identifier]
         original_column, highlighted_column = st.columns(2)
         if not result.filename or result.content is None:
             original_column.caption("Unavailable")
@@ -928,7 +1011,9 @@ def render_global_results(results: dict[str, ExtractionResult] | None) -> None:
             data=result.content,
             file_name=result.filename,
             mime="application/pdf",
-            key=f"global-download-original-{selection_key}",
+            key=channel_state_key(
+                channel_key, f"download-original-{selection_key}"
+            ),
             use_container_width=True,
         )
         if result.highlighted_content is None or not result.highlighted_count:
@@ -939,21 +1024,26 @@ def render_global_results(results: dict[str, ExtractionResult] | None) -> None:
             data=result.highlighted_content,
             file_name=f"{Path(result.filename).stem}-highlighted.pdf",
             mime="application/pdf",
-            key=f"global-download-highlighted-{selection_key}",
+            key=channel_state_key(
+                channel_key, f"download-highlighted-{selection_key}"
+            ),
             use_container_width=True,
         )
 
 
-def render_global_tab() -> None:
+def render_analysis_tab(
+    channel_key: str, title: str, entities: dict[str, Insurer]
+) -> None:
     """Charge les documents sélectionnés et centralise leurs informations."""
-    st.subheader("Fund competition analysis")
-    initialize_global_fund_fields()
-    source_urls, source_url_errors = render_source_url_fields()
-    csv_errors = sync_uploaded_csv()
-    selections, document_url_errors = render_fund_fields()
+    st.subheader(title)
+    initialize_fund_fields(channel_key, entities)
+    source_urls, source_url_errors = render_source_url_fields(channel_key, entities)
+    csv_errors = sync_uploaded_csv(channel_key, entities)
+    selections, document_url_errors = render_fund_fields(channel_key, entities)
 
     if st.button(
         "Retrieve and extract information (AI)",
+        key=channel_state_key(channel_key, "extract"),
         type="primary",
         use_container_width=True,
         disabled=(
@@ -967,16 +1057,28 @@ def render_global_tab() -> None:
         if not api_key:
             st.warning("Configure OPENAI_API_KEY in .streamlit/secrets.toml or the environment.")
         else:
-            st.session_state["global-extraction-results"] = extract_selections(
+            st.session_state[
+                channel_state_key(channel_key, "extraction-results")
+            ] = extract_selections(
                 selections, source_urls, api_key
             )
 
-    render_global_results(st.session_state.get("global-extraction-results"))
+    render_analysis_results(
+        channel_key,
+        entities,
+        st.session_state.get(channel_state_key(channel_key, "extraction-results")),
+    )
 
 
 def main() -> None:
     st.set_page_config(page_title="Fund documents", page_icon="📄", layout="wide")
-    render_global_tab()
+    broker_tab, bank_tab = st.tabs(["Broker channel", "Bank channel"])
+    with broker_tab:
+        render_analysis_tab(
+            "broker", "Broker channel competition analysis", BROKER_ENTITIES
+        )
+    with bank_tab:
+        render_analysis_tab("bank", "Bank channel competition analysis", BANK_ENTITIES)
 
 
 if __name__ == "__main__":

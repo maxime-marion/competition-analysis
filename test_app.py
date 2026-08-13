@@ -3,8 +3,12 @@ from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
 
+from ag_download import BANK_CATALOGUE_URL, BROKER_CATALOGUE_URL
 from app import (
+    BANK_ENTITIES,
+    BROKER_ENTITIES,
     Insurer,
+    channel_state_key,
     fetch_pdf,
     format_percentage,
     parse_fund_csv,
@@ -54,6 +58,43 @@ class DirectDocumentUrlTests(unittest.TestCase):
         self.assertEqual(content, b"%PDF-direct")
         self.assertEqual(downloader.call_count, 0)
         direct_download.assert_called_once()
+
+
+class ChannelConfigurationTests(unittest.TestCase):
+    def test_bank_csv_accepts_bank_entities(self):
+        selections, errors = parse_fund_csv(
+            (
+                b"entity,fund name\n"
+                b"AG,AG Life Sustainable Defensive\n"
+                b"Belfius,Example Bank Fund\n"
+            ),
+            BANK_ENTITIES,
+        )
+
+        self.assertEqual(errors, [])
+        self.assertEqual(
+            {selection.identifier for selection in selections}, {"ag", "belfius"}
+        )
+
+    def test_bank_ag_uses_bnppf_catalogue(self):
+        self.assertEqual(BANK_ENTITIES["ag"].source_url, BANK_CATALOGUE_URL)
+
+    def test_broker_ag_uses_broker_catalogue(self):
+        self.assertEqual(BROKER_ENTITIES["ag"].source_url, BROKER_CATALOGUE_URL)
+
+    def test_channel_keys_are_isolated(self):
+        self.assertEqual(
+            channel_state_key("broker", "fund-belfius-0"),
+            "broker-fund-belfius-0",
+        )
+        self.assertEqual(
+            channel_state_key("bank", "fund-belfius-0"),
+            "bank-fund-belfius-0",
+        )
+        self.assertNotEqual(
+            channel_state_key("broker", "extraction-results"),
+            channel_state_key("bank", "extraction-results"),
+        )
 
 
 class FeeExtractionTests(unittest.TestCase):

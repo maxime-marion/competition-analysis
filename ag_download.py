@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -13,19 +14,27 @@ from download_common import (
     document_links,
     download_pdf,
     normalized,
-    parse_download_args,
     pdf_filename_from_url,
     select_unique_match,
 )
 
 
-CATALOGUE_URL = "https://ag.ag-muma.be/fr/allfunds"
+BROKER_CATALOGUE_URL = "https://ag.ag-muma.be/fr/allfunds"
+BANK_CATALOGUE_URL = "https://bnppf.ag-muma.be/fr/allfunds"
 DEFAULT_FUND = "AG Life Optitrack Equities"
+BANK_DEFAULT_FUND = "AG Life Sustainable Defensive"
+
+CHANNEL_CATALOGUE_URLS = {
+    "broker": BROKER_CATALOGUE_URL,
+    "bank": BANK_CATALOGUE_URL,
+}
+CHANNEL_DEFAULT_FUNDS = {
+    "broker": DEFAULT_FUND,
+    "bank": BANK_DEFAULT_FUND,
+}
 
 
-def catalogue_funds(
-    html: str, catalogue_url: str = CATALOGUE_URL
-) -> list[tuple[str, str]]:
+def catalogue_funds(html: str, catalogue_url: str) -> list[tuple[str, str]]:
     """Extrait les couples nom/URL des fonds présents dans le catalogue AG."""
     soup = BeautifulSoup(html, "html.parser")
     funds: dict[str, tuple[str, str]] = {}
@@ -81,7 +90,7 @@ def pdf_filename(url: str) -> str:
 
 
 def download_fund(
-    query: str, output_dir: Path, catalogue_url: str = CATALOGUE_URL
+    query: str, output_dir: Path, catalogue_url: str
 ) -> Path:
     """Trouve puis télécharge le KID public du fonds AG demandé."""
     session = create_session("AG-KID-Downloader/1.0")
@@ -106,15 +115,33 @@ def download_fund(
 
 
 def parse_args():
-    return parse_download_args(
-        __doc__,
-        item_option="fund",
-        item_label="fund",
-        default_item=DEFAULT_FUND,
-        default_output_dir=Path("ag_downloads"),
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--channel",
+        choices=tuple(CHANNEL_CATALOGUE_URLS),
+        required=True,
+        help="AG distribution channel whose MuMa catalogue should be searched.",
     )
+    parser.add_argument(
+        "--fund",
+        help="Full name or distinctive part of the fund name.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("ag_downloads"),
+        help="Destination directory (default: ag_downloads)",
+    )
+    arguments = parser.parse_args()
+    if not arguments.fund:
+        arguments.fund = CHANNEL_DEFAULT_FUNDS[arguments.channel]
+    return arguments
 
 
 if __name__ == "__main__":
     arguments = parse_args()
-    download_fund(arguments.fund, arguments.output_dir)
+    download_fund(
+        arguments.fund,
+        arguments.output_dir,
+        CHANNEL_CATALOGUE_URLS[arguments.channel],
+    )

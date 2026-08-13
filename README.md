@@ -96,14 +96,31 @@ Le PDF est enregistré dans le dossier `baloise_downloads`.
 
 ## Application Streamlit
 
-L'application regroupe les téléchargeurs Allianz, Vivium, Athora, Baloise, NN et AG
-dans une interface unique. Saisis un fonds, clique sur le bouton de récupération,
-puis télécharge le document original ou sa copie surlignée :
+L'application propose deux onglets alimentés par le même workflow d'analyse :
+
+- **Broker channel** regroupe Allianz, Vivium, Athora, Baloise, NN et AG ;
+- **Bank channel** compare AG (catalogue BNP Paribas Fortis) et Belfius.
+
+Chaque onglet conserve ses propres champs, liens source et résultats. Saisis un fonds,
+clique sur le bouton de récupération, puis télécharge le document original ou sa copie
+surlignée :
 
 ```bash
 python3 -m pip install -r requirements.txt
 streamlit run app.py
 ```
+
+### Documents Belfius
+
+Le téléchargeur Belfius recherche directement le nom du fonds dans le texte visible
+des liens de la page retail configurée. Le lien correspondant est ensuite téléchargé
+et validé comme PDF. L'URL source reste modifiable dans l'onglet **Bank channel**.
+
+### Documents AG du canal bancaire
+
+L'entité AG du canal bancaire réutilise le téléchargeur MuMa avec son catalogue
+spécifique BNP Paribas Fortis : `https://bnppf.ag-muma.be/fr/allfunds`. Elle est
+indépendante de l'entité AG du canal Broker, qui conserve son URL source actuelle.
 
 Les PDF ne sont pas affichés dans l'application. PyMuPDF ajoute les surlignages
 directement dans une copie générée en mémoire, sans stockage permanent. Cette copie
@@ -117,7 +134,8 @@ pour Vivium, Athora et NN, un nom partiel unique est accepté. Le téléchargeur
 être utilisé en ligne de commande :
 
 ```bash
-python ag_download.py --fund "AG Life Optitrack Equities"
+python ag_download.py --channel broker --fund "AG Life Optitrack Equities"
+python ag_download.py --channel bank --fund "AG Life Sustainable Defensive"
 ```
 
 ### Extraction de la date de version avec IA
@@ -131,8 +149,8 @@ et de transaction, sous forme d'un pourcentage ou d'un intervalle de pourcentage
 Les passages repérés sont ensuite surlignés
 directement dans la copie PDF téléchargeable.
 
-L'onglet **Global** affiche dès le départ un champ de nom de fonds prérempli pour
-chaque entité. Modifie les noms directement, puis récupère les documents et extrais
+Chaque onglet affiche dès le départ un champ de nom de fonds prérempli pour chacune
+de ses entités. Modifie les noms directement, puis récupère les documents et extrais
 toutes leurs informations en un seul clic. Plusieurs fonds d'une même entité peuvent
 être ajoutés grâce au bouton dédié, qui crée un champ par fonds. Le tableau de résultats
 centralise la date détectée, la durée de détention recommandée, la réduction du
@@ -144,7 +162,7 @@ directement sous le tableau des résultats.
 
 ### Importer une sélection CSV
 
-Dans l'onglet **Global**, il est aussi possible d'importer un fichier CSV. Il doit
+Dans chaque onglet, il est aussi possible d'importer un fichier CSV. Il doit
 contenir une ligne par fonds, avec les colonnes `entity` et `fund name` (ou
 `name of the fund`). Une colonne `document URL` peut être ajoutée pour fournir
 directement le PDF :
@@ -159,8 +177,9 @@ Baloise,Global Equity Fund,
 NN,NN Blackrock Global Allocation Fund,
 ```
 
-Les entités prises en charge sont `AG`, `Allianz`, `Vivium`, `Athora`, `Baloise` et
-`NN`. Après validation,
+Le fichier est validé par rapport à l'onglet actif : `AG`, `Allianz`, `Vivium`,
+`Athora`, `Baloise` et `NN` pour **Broker channel**, ou `AG` et `Belfius` pour
+**Bank channel**. Après validation,
 l'import remplit directement les champs correspondants : aucun tableau de sélection
 supplémentaire n'est affiché. Une même entité peut apparaître plusieurs fois avec des
 fonds différents ; un champ est créé pour chacun de ses fonds.
