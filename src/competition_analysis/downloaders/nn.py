@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from download_common import (
+from competition_analysis.download_common import (
     document_links,
     download_from_html_catalogue,
     normalized,

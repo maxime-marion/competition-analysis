@@ -6,44 +6,44 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from ag_download import (
+from competition_analysis.downloaders.ag import (
     BANK_CATALOGUE_URL as AG_BANK_CATALOGUE_URL,
     BANK_DEFAULT_FUND as AG_BANK_DEFAULT_FUND,
     BROKER_CATALOGUE_URL as AG_BROKER_CATALOGUE_URL,
     DEFAULT_FUND as AG_DEFAULT_FUND,
     download_fund as download_ag_fund,
 )
-from allianz_download import (
+from competition_analysis.downloaders.allianz import (
     DEFAULT_DOCUMENT as ALLIANZ_DEFAULT_DOCUMENT,
     PAGE_URL as ALLIANZ_PAGE_URL,
     download_document as download_allianz_document,
 )
-from athora_download import (
+from competition_analysis.downloaders.athora import (
     DEFAULT_FUND as ATHORA_DEFAULT_FUND,
     PAGE_URL as ATHORA_PAGE_URL,
     download_fund as download_athora_fund,
 )
-from baloise_download import (
+from competition_analysis.downloaders.baloise import (
     DEFAULT_FUND as BALOISE_DEFAULT_FUND,
     PAGE_URL as BALOISE_PAGE_URL,
     download_fund as download_baloise_fund,
 )
-from belfius_download import (
+from competition_analysis.downloaders.belfius import (
     DEFAULT_FUND as BELFIUS_DEFAULT_FUND,
     PAGE_URL as BELFIUS_PAGE_URL,
     download_fund as download_belfius_fund,
 )
-from kbc_download import (
+from competition_analysis.downloaders.kbc import (
     DEFAULT_FUND as KBC_DEFAULT_FUND,
     PAGE_URL as KBC_PAGE_URL,
     download_fund as download_kbc_fund,
 )
-from nn_download import (
+from competition_analysis.downloaders.nn import (
     DEFAULT_DOCUMENT as NN_DEFAULT_DOCUMENT,
     PAGE_URL as NN_PAGE_URL,
     download_document as download_nn_document,
 )
-from vivium_download import (
+from competition_analysis.downloaders.vivium import (
     DEFAULT_FUND as VIVIUM_DEFAULT_FUND,
     PAGE_URL as VIVIUM_PAGE_URL,
     download_fund as download_vivium_fund,

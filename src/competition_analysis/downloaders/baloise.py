@@ -8,7 +8,7 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Tag
 
-from download_common import (
+from competition_analysis.download_common import (
     DocumentLink,
     download_from_html_catalogue,
     normalized,

@@ -3,7 +3,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import Mock, patch
 
-from kbc_download import download_fund, kid_links, select_kid
+from competition_analysis.downloaders.kbc import download_fund, kid_links, select_kid
 
 
 CATALOGUE_HTML = """
@@ -51,8 +51,8 @@ class KbcCatalogueTests(unittest.TestCase):
             return destination
 
         with TemporaryDirectory() as temporary_directory, patch(
-            "download_common.create_session", return_value=session
-        ), patch("download_common.download_pdf", side_effect=write_pdf):
+            "competition_analysis.download_common.create_session", return_value=session
+        ), patch("competition_analysis.download_common.download_pdf", side_effect=write_pdf):
             destination = download_fund(
                 "Defensive Balanced",
                 Path(temporary_directory),

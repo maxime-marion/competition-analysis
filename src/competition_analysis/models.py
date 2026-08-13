@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, TypeAlias, TypedDict
 
-from entities import Insurer
+from competition_analysis.entities import Insurer
 
 
 Percentage: TypeAlias = int | float

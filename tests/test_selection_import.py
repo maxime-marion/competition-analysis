@@ -1,7 +1,7 @@
 import unittest
 
-from entities import BANK_ENTITIES
-from selection_import import parse_fund_csv
+from competition_analysis.entities import BANK_ENTITIES
+from competition_analysis.selection_import import parse_fund_csv
 
 
 class FundCsvTests(unittest.TestCase):

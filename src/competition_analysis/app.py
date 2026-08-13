@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import streamlit as st
 
-from entities import BANK_ENTITIES, BROKER_ENTITIES
-from streamlit_ui import render_analysis_tab
+from competition_analysis.entities import BANK_ENTITIES, BROKER_ENTITIES
+from competition_analysis.streamlit_ui import render_analysis_tab
 
 
 def main() -> None:

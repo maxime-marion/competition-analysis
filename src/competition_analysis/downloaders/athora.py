@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Télécharge un document de fonds depuis la page Fiches info Vivium."""
+"""Télécharge un document spécifique d'un fonds Profilife chez Athora."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from download_common import (
+from competition_analysis.download_common import (
     document_links,
     download_from_html_catalogue,
     parse_download_args,
@@ -14,20 +14,32 @@ from download_common import (
 )
 
 
-PAGE_URL = "https://www.vivium.be/fr/private-individuals/fiches-info"
-DEFAULT_FUND = "DIC - Branche 23 Euro Corporate SRI Bonds"
+PAGE_URL = "https://www.athora.com/be/fr/bibliotheque/documents"
+DEFAULT_FUND = "Profilife - Athora DNCA Invest Beyd Semperosa A"
 
 
 def select_fund(links: list[tuple[str, str]], query: str) -> tuple[str, str]:
     """Sélectionne un fonds par libellé exact ou partiel."""
     return select_unique_match(
-        links, query, missing_label="Fund", multiple_label="documents"
+        links,
+        query,
+        missing_label="Fund",
+        multiple_label="documents",
     )
 
 
 def pdf_filename(url: str) -> str:
-    """Extrait le nom du PDF depuis l'URL Vivium."""
-    return pdf_filename_from_url(url, "dic.pdf")
+    return pdf_filename_from_url(url, "document-athora.pdf")
+
+
+def fund_links(html: str, page_url: str) -> list[tuple[str, str]]:
+    """Extrait les documents de fonds de la vue Athora."""
+    return document_links(
+        html,
+        page_url,
+        selector=".views-field-name",
+        link_selector="a[href]",
+    )
 
 
 def download_fund(query: str, output_dir: Path, page_url: str = PAGE_URL) -> Path:
@@ -35,8 +47,8 @@ def download_fund(query: str, output_dir: Path, page_url: str = PAGE_URL) -> Pat
         query,
         output_dir,
         page_url,
-        user_agent="Vivium-DIC-Downloader/1.0",
-        extract_links=document_links,
+        user_agent="Athora-DIS-Downloader/1.0",
+        extract_links=fund_links,
         select_link=select_fund,
         build_filename=lambda _title, url: pdf_filename(url),
     )
@@ -48,7 +60,7 @@ def parse_args():
         item_option="fund",
         item_label="fund",
         default_item=DEFAULT_FUND,
-        default_output_dir=Path("vivium_downloads"),
+        default_output_dir=Path("athora_downloads"),
     )
 
 

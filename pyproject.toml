@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "competition-analysis"
+version = "0.1.0"
+description = "Analyse concurrentielle de documents financiers"
+requires-python = ">=3.11"
+dependencies = [
+    "beautifulsoup4>=4.12,<5",
+    "requests>=2.32,<3",
+    "streamlit>=1.40,<2",
+    "PyMuPDF>=1.26,<2",
+    "openai>=1.0,<3",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

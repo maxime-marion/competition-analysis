@@ -6,9 +6,9 @@ import csv
 from io import StringIO
 from urllib.parse import urlparse
 
-from download_common import compact_normalized
-from entities import BROKER_ENTITIES, Insurer
-from models import FundSelection
+from competition_analysis.download_common import compact_normalized
+from competition_analysis.entities import BROKER_ENTITIES, Insurer
+from competition_analysis.models import FundSelection
 
 
 CSV_ENTITY_HEADERS = ("entity", "entite", "assureur")

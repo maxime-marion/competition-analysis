@@ -1,15 +1,15 @@
 import unittest
 
-from ag_download import catalogue_funds, kid_links
-from allianz_download import catalogue_documents as allianz_catalogue_documents
-from athora_download import PAGE_URL as ATHORA_PAGE_URL
-from athora_download import select_fund as select_athora_fund
-from baloise_download import catalogue_documents as baloise_catalogue_documents
-from entities import BROKER_ENTITIES
-from nn_download import PAGE_URL as NN_PAGE_URL
-from nn_download import select_document as select_nn_document
-from vivium_download import PAGE_URL as VIVIUM_PAGE_URL
-from vivium_download import pdf_filename as vivium_pdf_filename
+from competition_analysis.downloaders.ag import catalogue_funds, kid_links
+from competition_analysis.downloaders.allianz import catalogue_documents as allianz_catalogue_documents
+from competition_analysis.downloaders.athora import PAGE_URL as ATHORA_PAGE_URL
+from competition_analysis.downloaders.athora import select_fund as select_athora_fund
+from competition_analysis.downloaders.baloise import catalogue_documents as baloise_catalogue_documents
+from competition_analysis.entities import BROKER_ENTITIES
+from competition_analysis.downloaders.nn import PAGE_URL as NN_PAGE_URL
+from competition_analysis.downloaders.nn import select_document as select_nn_document
+from competition_analysis.downloaders.vivium import PAGE_URL as VIVIUM_PAGE_URL
+from competition_analysis.downloaders.vivium import pdf_filename as vivium_pdf_filename
 
 
 class AgCatalogueTests(unittest.TestCase):

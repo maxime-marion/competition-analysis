@@ -3,12 +3,12 @@ from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
 
-from document_processing import (
+from competition_analysis.document_processing import (
     fetch_pdf,
     format_percentage,
     parse_extraction_response,
 )
-from entities import Insurer
+from competition_analysis.entities import Insurer
 
 
 class DirectDocumentUrlTests(unittest.TestCase):
@@ -21,8 +21,8 @@ class DirectDocumentUrlTests(unittest.TestCase):
             destination.write_bytes(b"%PDF-direct")
             return destination
 
-        with patch("document_processing.create_session"), patch(
-            "document_processing.download_pdf", side_effect=write_pdf
+        with patch("competition_analysis.document_processing.create_session"), patch(
+            "competition_analysis.document_processing.download_pdf", side_effect=write_pdf
         ) as direct_download:
             filename, content = fetch_pdf(
                 insurer,

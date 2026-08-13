@@ -13,15 +13,15 @@ from typing import cast
 import pymupdf
 from openai import OpenAI
 
-from download_common import (
+from competition_analysis.download_common import (
     compact_normalized,
     create_session,
     download_pdf,
     pdf_filename_from_title,
     pdf_filename_from_url,
 )
-from entities import Insurer
-from models import (
+from competition_analysis.entities import Insurer
+from competition_analysis.models import (
     DocumentExtraction,
     ExtractionResult,
     FundSelection,

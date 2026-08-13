@@ -9,15 +9,15 @@ from pathlib import Path
 from openai import OpenAI
 import streamlit as st
 
-from document_processing import (
+from competition_analysis.document_processing import (
     format_number,
     format_percentage,
     format_version_date,
     process_selection,
 )
-from entities import BROKER_ENTITIES, Insurer
-from models import ExtractionResult, FundSelection
-from selection_import import parse_fund_csv, valid_source_url
+from competition_analysis.entities import BROKER_ENTITIES, Insurer
+from competition_analysis.models import ExtractionResult, FundSelection
+from competition_analysis.selection_import import parse_fund_csv, valid_source_url
 
 
 def channel_state_key(channel_key: str, name: str) -> str:

@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import urljoin
 from uuid import uuid4
 
-from download_common import (
+from competition_analysis.download_common import (
     DocumentLink,
     create_session,
     download_selected_pdf,

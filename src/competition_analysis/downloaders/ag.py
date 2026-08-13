@@ -9,7 +9,7 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Tag
 
-from download_common import (
+from competition_analysis.download_common import (
     create_session,
     document_links,
     download_selected_pdf,

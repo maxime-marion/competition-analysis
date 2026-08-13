@@ -3,7 +3,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import Mock, patch
 
-from belfius_download import download_fund, fund_links, select_fund_link
+from competition_analysis.downloaders.belfius import download_fund, fund_links, select_fund_link
 
 
 class BelfiusLinkTests(unittest.TestCase):
@@ -47,8 +47,8 @@ class BelfiusLinkTests(unittest.TestCase):
             return destination
 
         with TemporaryDirectory() as temporary_directory, patch(
-            "download_common.create_session", return_value=session
-        ), patch("download_common.download_pdf", side_effect=write_pdf):
+            "competition_analysis.download_common.create_session", return_value=session
+        ), patch("competition_analysis.download_common.download_pdf", side_effect=write_pdf):
             destination = download_fund(
                 "Example Fund",
                 Path(temporary_directory),

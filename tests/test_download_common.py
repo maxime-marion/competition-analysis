@@ -1,6 +1,6 @@
 import unittest
 
-from download_common import pdf_filename_from_title, select_unique_match
+from competition_analysis.download_common import pdf_filename_from_title, select_unique_match
 
 
 class PdfFilenameTests(unittest.TestCase):

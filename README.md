@@ -6,14 +6,14 @@ Le script Allianz interroge directement l'API publique utilisée par le centre d
 documents, sans navigateur ni simulation d'interface :
 
 ```bash
-python allianz_download.py
+python -m competition_analysis.downloaders.allianz
 ```
 
 Par défaut, il télécharge le DIC `Allianz ActiveInvest`. Un nom partiel unique peut
 être fourni pour sélectionner un autre document :
 
 ```bash
-python allianz_download.py --document "ActiveInvest Balanced"
+python -m competition_analysis.downloaders.allianz --document "ActiveInvest Balanced"
 ```
 
 ## Installation
@@ -21,7 +21,17 @@ python allianz_download.py --document "ActiveInvest Balanced"
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements.txt
+python -m pip install -e .
+```
+
+Le code applicatif se trouve dans `src/competition_analysis`, les téléchargeurs
+spécifiques aux entités dans `src/competition_analysis/downloaders`, les tests dans
+`tests` et le CSV d'exemple dans `examples`.
+
+Pour lancer les tests :
+
+```bash
+python -m unittest discover -s tests -v
 ```
 
 ## Téléchargement d'un DIC Vivium
@@ -31,13 +41,13 @@ sur la page, sans dépendre d'une rubrique ou d'un accordéon. Aucun navigateur
 n'est nécessaire :
 
 ```bash
-python vivium_download.py
+python -m competition_analysis.downloaders.vivium
 ```
 
 Par défaut, le script télécharge le DIC « Euro Corporate SRI Bonds ». Pour choisir un autre fonds :
 
 ```bash
-python vivium_download.py --fund "Stability Fund"
+python -m competition_analysis.downloaders.vivium --fund "Stability Fund"
 ```
 
 Le PDF est enregistré dans le dossier `vivium_downloads`. À chaque exécution, le script relit la page Vivium afin de récupérer l'URL la plus récente du document.
@@ -47,13 +57,13 @@ Le PDF est enregistré dans le dossier `vivium_downloads`. À chaque exécution,
 Le script Athora recherche directement le nom du fonds dans les documents affichés sur la page, sans dépendre d'une rubrique ou d'un accordéon :
 
 ```bash
-python athora_download.py
+python -m competition_analysis.downloaders.athora
 ```
 
 Par défaut, il télécharge le document du fonds `Profilife - Athora DNCA Invest Beyd Semperosa A`. Pour choisir un autre fonds Profilife :
 
 ```bash
-python athora_download.py --fund "Athora Pictet Gbl Megatrend Select P"
+python -m competition_analysis.downloaders.athora --fund "Athora Pictet Gbl Megatrend Select P"
 ```
 
 Le PDF est enregistré dans le dossier `athora_downloads`. Le script relit la page Athora à chaque exécution afin de suivre une éventuelle modification de l'URL du document.
@@ -64,13 +74,13 @@ Le script NN recherche le nom du fonds parmi les documents affichés sur la page
 des documents légaux :
 
 ```bash
-python nn_download.py
+python -m competition_analysis.downloaders.nn
 ```
 
 Par défaut, il télécharge le document essentiel du fonds `NN Blackrock Global Allocation Fund`. Pour choisir un autre document :
 
 ```bash
-python nn_download.py --document "NN Fidelity world Fund"
+python -m competition_analysis.downloaders.nn --document "NN Fidelity world Fund"
 ```
 
 Le PDF est enregistré dans le dossier `nn_downloads`. Le script relit la page NN à chaque exécution afin de récupérer l'URL et le jeton publics actuellement associés au document.
@@ -81,13 +91,13 @@ Le script Baloise consulte le catalogue EID public intégré à la page de docum
 Baloise et recherche le fonds par nom exact ou partiel :
 
 ```bash
-python baloise_download.py
+python -m competition_analysis.downloaders.baloise
 ```
 
 Par défaut, il télécharge l'EID de `Global Equity Fund`. Pour choisir un autre fonds :
 
 ```bash
-python baloise_download.py --fund "Pictet Smartcity Fund"
+python -m competition_analysis.downloaders.baloise --fund "Pictet Smartcity Fund"
 ```
 
 Lorsqu'un fonds existe pour plusieurs produits, utilise le libellé distinctif affiché
@@ -106,8 +116,8 @@ clique sur le bouton de récupération, puis télécharge le document original o
 surlignée :
 
 ```bash
-python3 -m pip install -r requirements.txt
-streamlit run app.py
+python -m pip install -e .
+streamlit run src/competition_analysis/app.py
 ```
 
 ### Documents Belfius
@@ -131,7 +141,7 @@ Un nom partiel unique est accepté. En cas de noms identiques, le message d'erre
 affiche les correspondances disponibles :
 
 ```bash
-python kbc_download.py --fund "KBC Defensive Balanced Classic Shares CAP"
+python -m competition_analysis.downloaders.kbc --fund "KBC Defensive Balanced Classic Shares CAP"
 ```
 
 Le PDF est enregistré dans le dossier `kbc_downloads`.
@@ -148,8 +158,8 @@ pour Vivium, Athora et NN, un nom partiel unique est accepté. Le téléchargeur
 être utilisé en ligne de commande :
 
 ```bash
-python ag_download.py --channel broker --fund "AG Life Optitrack Equities"
-python ag_download.py --channel bank --fund "AG Life Sustainable Defensive"
+python -m competition_analysis.downloaders.ag --channel broker --fund "AG Life Optitrack Equities"
+python -m competition_analysis.downloaders.ag --channel bank --fund "AG Life Sustainable Defensive"
 ```
 
 ### Extraction de la date de version avec IA
@@ -219,5 +229,5 @@ soit au lancement :
 
 ```bash
 export OPENAI_API_KEY="ta_nouvelle_cle"
-streamlit run app.py
+streamlit run src/competition_analysis/app.py
 ```

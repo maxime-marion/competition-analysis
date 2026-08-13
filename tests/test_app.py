@@ -1,9 +1,9 @@
 import unittest
 
-from ag_download import BANK_CATALOGUE_URL, BROKER_CATALOGUE_URL
-from entities import BANK_ENTITIES, BROKER_ENTITIES
-from kbc_download import PAGE_URL as KBC_PAGE_URL
-from streamlit_ui import channel_state_key
+from competition_analysis.downloaders.ag import BANK_CATALOGUE_URL, BROKER_CATALOGUE_URL
+from competition_analysis.entities import BANK_ENTITIES, BROKER_ENTITIES
+from competition_analysis.downloaders.kbc import PAGE_URL as KBC_PAGE_URL
+from competition_analysis.streamlit_ui import channel_state_key
 
 
 class ChannelConfigurationTests(unittest.TestCase):

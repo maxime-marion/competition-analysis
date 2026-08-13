@@ -2,7 +2,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from ag_download import (
+from competition_analysis.downloaders.ag import (
     BANK_DEFAULT_FUND,
     CHANNEL_CATALOGUE_URLS,
     DEFAULT_FUND,
