@@ -22,7 +22,7 @@ from competition_analysis.download_common import (
 BROKER_CATALOGUE_URL = "https://ag.ag-muma.be/fr/allfunds"
 BANK_CATALOGUE_URL = "https://bnppf.ag-muma.be/fr/allfunds"
 DEFAULT_FUND = "AG Life Optitrack Equities"
-BANK_DEFAULT_FUND = "AG Life Sustainable Defensive"
+BANK_DEFAULT_FUND = "AG Life Smart Future Defensive"
 
 CHANNEL_CATALOGUE_URLS = {
     "broker": BROKER_CATALOGUE_URL,
@@ -32,6 +32,7 @@ CHANNEL_DEFAULT_FUNDS = {
     "broker": DEFAULT_FUND,
     "bank": BANK_DEFAULT_FUND,
 }
+KID_PLANS = ("Easy Fund Plan", "Smart Fund Plan Private")
 
 
 def catalogue_funds(html: str, catalogue_url: str) -> list[tuple[str, str]]:
@@ -72,12 +73,24 @@ def kid_links(html: str, fund_url: str) -> list[tuple[str, str]]:
     return links
 
 
-def select_kid(links: list[tuple[str, str]]) -> tuple[str, str]:
+def select_kid(
+    links: list[tuple[str, str]], document_variant: str | None = None
+) -> tuple[str, str]:
     """Retourne l'unique KID du fonds, ou une erreur explicite."""
     unique_links = list(dict.fromkeys(links))
+    if document_variant:
+        unique_links = [
+            link
+            for link in unique_links
+            if normalized(document_variant) in normalized(link[0])
+        ]
     if len(unique_links) == 1:
         return unique_links[0]
     if not unique_links:
+        if document_variant:
+            raise RuntimeError(
+                f'No KID was found for the AG plan "{document_variant}".'
+            )
         raise RuntimeError("No KID was found in this AG fund's documents.")
     raise RuntimeError(
         "Multiple KIDs were found for this AG fund:\n"
@@ -90,7 +103,10 @@ def pdf_filename(url: str) -> str:
 
 
 def download_fund(
-    query: str, output_dir: Path, catalogue_url: str
+    query: str,
+    output_dir: Path,
+    catalogue_url: str,
+    document_variant: str | None = None,
 ) -> Path:
     """Trouve puis télécharge le KID public du fonds AG demandé."""
     session = create_session("AG-KID-Downloader/1.0")
@@ -103,7 +119,9 @@ def download_fund(
 
     fund_response = session.get(fund_url, timeout=30)
     fund_response.raise_for_status()
-    document_title, document_url = select_kid(kid_links(fund_response.text, fund_url))
+    document_title, document_url = select_kid(
+        kid_links(fund_response.text, fund_url), document_variant
+    )
 
     return download_selected_pdf(
         session,
@@ -127,6 +145,11 @@ def parse_args():
         help="Full name or distinctive part of the fund name.",
     )
     parser.add_argument(
+        "--plan",
+        choices=KID_PLANS,
+        help="AG plan used to select the KID when a fund has multiple documents.",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("ag_downloads"),
@@ -144,4 +167,5 @@ if __name__ == "__main__":
         arguments.fund,
         arguments.output_dir,
         CHANNEL_CATALOGUE_URLS[arguments.channel],
+        arguments.plan,
     )

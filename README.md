@@ -131,6 +131,9 @@ et validé comme PDF. L'URL source reste modifiable dans l'onglet **Bank channel
 L'entité AG du canal bancaire réutilise le téléchargeur MuMa avec son catalogue
 spécifique BNP Paribas Fortis : `https://bnppf.ag-muma.be/fr/allfunds`. Elle est
 indépendante de l'entité AG du canal Broker, qui conserve son URL source actuelle.
+Le sélecteur global **AG product for which funds are associated** permet de choisir
+le KID « Easy Fund Plan » ou « Smart Fund Plan Private » pour tous les fonds AG de
+l'analyse bancaire.
 
 ### Documents KBC
 
@@ -159,7 +162,8 @@ pour Vivium, Athora et NN, un nom partiel unique est accepté. Le téléchargeur
 
 ```bash
 python -m competition_analysis.downloaders.ag --channel broker --fund "AG Life Optitrack Equities"
-python -m competition_analysis.downloaders.ag --channel bank --fund "AG Life Sustainable Defensive"
+python -m competition_analysis.downloaders.ag --channel bank --fund "AG Life Smart Future Defensive"
+python -m competition_analysis.downloaders.ag --channel bank --fund "AG Life Smart Future Defensive" --plan "Smart Fund Plan Private"
 ```
 
 ### Extraction de la date de version avec IA

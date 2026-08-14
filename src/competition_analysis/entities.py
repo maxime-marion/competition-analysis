@@ -11,6 +11,7 @@ from competition_analysis.downloaders.ag import (
     BANK_DEFAULT_FUND as AG_BANK_DEFAULT_FUND,
     BROKER_CATALOGUE_URL as AG_BROKER_CATALOGUE_URL,
     DEFAULT_FUND as AG_DEFAULT_FUND,
+    KID_PLANS as AG_KID_PLANS,
     download_fund as download_ag_fund,
 )
 from competition_analysis.downloaders.allianz import (
@@ -50,7 +51,7 @@ from competition_analysis.downloaders.vivium import (
 )
 
 
-Downloader = Callable[[str, Path, str], Path]
+Downloader = Callable[..., Path]
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,8 @@ class Insurer:
     default_fund: str
     source_url: str
     downloader: Downloader | None = None
+    document_variants: tuple[str, ...] = ()
+    document_variant_label: str = "Document type"
 
 
 BROKER_ENTITIES = {
@@ -106,6 +109,8 @@ BANK_ENTITIES = {
         default_fund=AG_BANK_DEFAULT_FUND,
         source_url=AG_BANK_CATALOGUE_URL,
         downloader=download_ag_fund,
+        document_variants=AG_KID_PLANS,
+        document_variant_label="AG product for which funds are associated",
     ),
     "belfius": Insurer(
         label="Belfius",

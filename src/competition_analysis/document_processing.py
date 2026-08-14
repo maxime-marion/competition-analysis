@@ -7,13 +7,16 @@ from datetime import date
 from difflib import SequenceMatcher
 import json
 from pathlib import Path
+import re
 from tempfile import TemporaryDirectory
 from typing import cast
+import warnings
 
 import pymupdf
 from openai import OpenAI
 
 from competition_analysis.download_common import (
+    ApproximateMatchWarning,
     compact_normalized,
     create_session,
     download_pdf,
@@ -80,10 +83,12 @@ Réponds uniquement avec un objet JSON valide, sans balises Markdown :
 
 Ajoute un repère distinct pour la date, la période de détention, la réduction du
 rendement, les frais de gestion et les frais de transaction lorsqu'ils sont trouvés.
-Chaque texte doit être une courte suite
-contiguë de 2 à 8 mots recopiée exactement depuis la page indiquée. Ne rassemble
-pas dans un même repère des cellules non contiguës d'un tableau et n'ajoute aucun
-repère pour une information non trouvée.
+Chaque texte doit être la plus courte suite contiguë de 1 à 8 mots qui contient la
+valeur extraite, recopiée caractère pour caractère depuis la page indiquée. Dans un
+tableau, retourne uniquement le contenu de la cellule de valeur (par exemple
+« 1,25 % » ou « 5 ans »), sans lui ajouter un libellé situé dans une autre cellule.
+Vérifie que le numéro suit exactement les marqueurs [PAGE n]. Ne rassemble pas des
+cellules non contiguës et n'ajoute aucun repère pour une information non trouvée.
 
 Texte du document :
 """
@@ -96,6 +101,7 @@ def fetch_pdf(
     fund: str,
     source_url: str | None = None,
     document_url: str | None = None,
+    document_variant: str | None = None,
 ) -> tuple[str, bytes]:
     """Télécharge le PDF dans un dossier temporaire puis retourne ses données."""
     if not document_url and insurer.downloader is None:
@@ -113,11 +119,17 @@ def fetch_pdf(
             )
         else:
             assert insurer.downloader is not None
-            path = insurer.downloader(
+            downloader_arguments = (
                 fund,
                 output_dir,
                 source_url or insurer.source_url,
             )
+            if document_variant:
+                path = insurer.downloader(
+                    *downloader_arguments, document_variant=document_variant
+                )
+            else:
+                path = insurer.downloader(*downloader_arguments)
         return path.name, path.read_bytes()
 
 
@@ -301,10 +313,94 @@ def highlight_specs(
     )
 
 
+def _number_spellings(value: int | float) -> tuple[str, ...]:
+    """Retourne les écritures décimales usuelles vues dans les DIC multilingues."""
+    formatted = format_number(value)
+    if formatted is None:
+        return ()
+    comma = formatted.replace(".", ",")
+    return tuple(dict.fromkeys((formatted, comma)))
+
+
+def highlight_fallbacks(
+    extraction: DocumentExtraction | None,
+) -> dict[str, tuple[str, ...]]:
+    """Construit des recherches locales à partir des valeurs validées du modèle.
+
+    Ces variantes ne remplacent pas les passages source : elles sont utilisées si
+    le passage est absent ou ne correspond pas au texte réellement encodé du PDF.
+    """
+    if not extraction:
+        return {}
+
+    fallbacks: dict[str, tuple[str, ...]] = {}
+    date_texts = tuple(
+        dict.fromkeys(
+            text
+            for text in (
+                extraction["display_date"],
+                format_version_date(extraction["version_date"]),
+                extraction["version_date"],
+            )
+            if text
+        )
+    )
+    if date_texts:
+        fallbacks["version_date"] = date_texts
+
+    holding_period = extraction["recommended_holding_period_years"]
+    if holding_period is not None:
+        spellings = _number_spellings(holding_period)
+        fallbacks["holding_period"] = tuple(
+            f"{number} {unit}"
+            for number in spellings
+            for unit in ("ans", "an", "years", "year", "jaar")
+        )
+
+    for field, value in (
+        ("reduction_in_yield", extraction["reduction_in_yield_percent"]),
+        ("management_fees", extraction["management_fees_percent"]),
+        ("transaction_fees", extraction["transaction_fees_percent"]),
+    ):
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            fallbacks[field] = tuple(
+                variant
+                for number in _number_spellings(value)
+                for variant in (f"{number} %", f"{number}%")
+            )
+        elif isinstance(value, list) and len(value) == 2:
+            left = _number_spellings(value[0])
+            right = _number_spellings(value[1])
+            separators = ("–", "-", "à", "to")
+            fallbacks[field] = tuple(
+                variant
+                for minimum in left
+                for maximum in right
+                for separator in separators
+                for variant in (
+                    f"{minimum} {separator} {maximum} %",
+                    f"{minimum} % {separator} {maximum} %",
+                )
+            )
+    return fallbacks
+
+
+def _numeric_fragments(text: str) -> list[str]:
+    """Extrait les nombres sans confondre virgule et point décimaux."""
+    return [
+        value.replace(",", ".")
+        for value in re.findall(r"\d+(?:[.,]\d+)?", text)
+    ]
+
+
 def fuzzy_word_rectangles(page: pymupdf.Page, text: str) -> list[list[pymupdf.Rect]]:
     """Retrouve les rectangles d'un extrait malgré les sauts de ligne du PDF."""
     indexed_words = [
-        (compact_normalized(str(word[4])), pymupdf.Rect(word[:4]))
+        (
+            compact_normalized(str(word[4])),
+            str(word[4]),
+            pymupdf.Rect(word[:4]),
+        )
         for word in page.get_text("words", sort=True)
     ]
     indexed_words = [item for item in indexed_words if item[0]]
@@ -313,31 +409,68 @@ def fuzzy_word_rectangles(page: pymupdf.Page, text: str) -> list[list[pymupdf.Re
     if not indexed_words or not target:
         return []
 
-    page_tokens = [word for word, _ in indexed_words]
+    page_tokens = [word for word, _, _ in indexed_words]
     exact_matches: list[list[pymupdf.Rect]] = []
     target_length = len(target)
-    for start in range(len(page_tokens) - target_length + 1):
-        if page_tokens[start : start + target_length] == target:
-            exact_matches.append(
-                [rectangle for _, rectangle in indexed_words[start : start + target_length]]
+    target_text = "".join(target)
+
+    # Ignore word boundaries: PDFs frequently encode “1,25 %” as one or two
+    # words and may split a word with a hyphen at the end of a line.
+    character_stream = "".join(page_tokens)
+    token_starts: list[int] = []
+    position = 0
+    for token in page_tokens:
+        token_starts.append(position)
+        position += len(token)
+    search_from = 0
+    token_ends = {
+        token_start + len(token)
+        for token_start, token in zip(token_starts, page_tokens)
+    }
+    while target_text and (
+        match_start := character_stream.find(target_text, search_from)
+    ) >= 0:
+        match_end = match_start + len(target_text)
+        if match_start not in token_starts or match_end not in token_ends:
+            search_from = match_start + 1
+            continue
+        matching_words = [
+            (raw_word, rectangle)
+            for token_start, (token, raw_word, rectangle) in zip(
+                token_starts, indexed_words
             )
+            if token_start < match_end and token_start + len(token) > match_start
+        ]
+        if matching_words and (
+            not _numeric_fragments(text)
+            or _numeric_fragments(" ".join(word for word, _ in matching_words))
+            == _numeric_fragments(text)
+        ):
+            exact_matches.append([rectangle for _, rectangle in matching_words])
+        search_from = match_start + 1
     if exact_matches:
         return exact_matches
 
-    target_text = "".join(target)
     best_score = 0.0
     best_rectangles: list[pymupdf.Rect] = []
     minimum_length = max(1, target_length - 2)
     maximum_length = min(len(page_tokens), target_length + 2)
+    target_numbers = _numeric_fragments(text)
     for window_length in range(minimum_length, maximum_length + 1):
         for start in range(len(page_tokens) - window_length + 1):
             window = indexed_words[start : start + window_length]
+            candidate_text = "".join(word for word, _, _ in window)
+            candidate_numbers = _numeric_fragments(
+                " ".join(raw_word for _, raw_word, _ in window)
+            )
+            if target_numbers and candidate_numbers != target_numbers:
+                continue
             score = SequenceMatcher(
-                None, target_text, "".join(word for word, _ in window)
+                None, target_text, candidate_text
             ).ratio()
             if score > best_score:
                 best_score = score
-                best_rectangles = [rectangle for _, rectangle in window]
+                best_rectangles = [rectangle for _, _, rectangle in window]
     return [best_rectangles] if best_score >= 0.82 else []
 
 
@@ -363,18 +496,55 @@ def source_rectangles(
 
 
 def create_highlighted_pdf(
-    content: bytes, specs: tuple[tuple[int, str, str], ...]
+    content: bytes,
+    specs: tuple[tuple[int, str, str], ...],
+    fallbacks: dict[str, tuple[str, ...]] | None = None,
 ) -> tuple[bytes, int]:
-    """Ajoute de vraies annotations de surlignage et retourne le PDF en mémoire."""
+    """Surligne une fois chaque champ, avec repli sur sa valeur extraite."""
     highlighted_sources = 0
+    fallbacks = fallbacks or {}
     with pymupdf.open(stream=content, filetype="pdf") as document:
-        for page_number, field, text in specs:
-            if page_number > document.page_count:
+        fields = tuple(
+            dict.fromkeys([field for _, field, _ in specs] + list(fallbacks))
+        )
+        for field in fields:
+            field_specs = [spec for spec in specs if spec[1] == field]
+            match: tuple[pymupdf.Page, list[pymupdf.Rect]] | None = None
+
+            # The model-provided source remains the most contextual candidate.
+            for page_number, _, text in field_specs:
+                if page_number > document.page_count:
+                    continue
+                page = document.load_page(page_number - 1)
+                rectangles = source_rectangles(page, field, text)
+                if rectangles:
+                    match = (page, rectangles)
+                    break
+
+            # If absent or malformed, search value spellings first on the model's
+            # claimed pages, then across the rest of the document.
+            if match is None and field in fallbacks:
+                preferred_pages = [
+                    page_number - 1
+                    for page_number, _, _ in field_specs
+                    if 0 < page_number <= document.page_count
+                ]
+                page_indexes = list(
+                    dict.fromkeys(preferred_pages + list(range(document.page_count)))
+                )
+                for page_index in page_indexes:
+                    page = document.load_page(page_index)
+                    for text in fallbacks[field]:
+                        rectangles = source_rectangles(page, field, text)
+                        if rectangles:
+                            match = (page, rectangles)
+                            break
+                    if match is not None:
+                        break
+
+            if match is None:
                 continue
-            page = document.load_page(page_number - 1)
-            rectangles = source_rectangles(page, field, text)
-            if not rectangles:
-                continue
+            page, rectangles = match
             for rectangle in rectangles:
                 annotation = page.add_highlight_annot(rectangle)
                 annotation.set_colors(stroke=(1, 0.84, 0))
@@ -397,12 +567,24 @@ def process_selection(
     """Traite une sélection complète sans dépendre de l'interface Streamlit."""
     report_progress = report_progress or (lambda _stage: None)
     report_progress(0)
+    match_warning: str | None = None
     try:
-        filename, content = fetch_pdf(
-            selection.insurer,
-            selection.fund,
-            source_url,
-            selection.document_url,
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always", ApproximateMatchWarning)
+            filename, content = fetch_pdf(
+                selection.insurer,
+                selection.fund,
+                source_url,
+                selection.document_url,
+                selection.document_variant,
+            )
+        match_warning = next(
+            (
+                str(caught.message)
+                for caught in caught_warnings
+                if issubclass(caught.category, ApproximateMatchWarning)
+            ),
+            None,
         )
         report_progress(1)
         extraction = extract_document_information(content, client)
@@ -418,10 +600,11 @@ def process_selection(
     highlighted_count = 0
     highlight_error: str | None = None
     specs = highlight_specs(extraction)
-    if specs:
+    fallbacks = highlight_fallbacks(extraction)
+    if specs or fallbacks:
         try:
             highlighted_content, highlighted_count = create_highlighted_pdf(
-                content, specs
+                content, specs, fallbacks
             )
         except Exception as error:
             highlight_error = exception_message(error)
@@ -434,5 +617,6 @@ def process_selection(
         extraction=extraction,
         highlighted_content=highlighted_content,
         highlighted_count=highlighted_count,
+        warning=match_warning,
         highlight_error=highlight_error,
     )

@@ -6,6 +6,7 @@ import argparse
 from collections.abc import Callable, Iterable
 import re
 import unicodedata
+import warnings
 from pathlib import Path
 from urllib.parse import unquote, urljoin, urlparse
 
@@ -17,6 +18,10 @@ DocumentLink = tuple[str, str]
 LinkExtractor = Callable[[str, str], list[DocumentLink]]
 LinkSelector = Callable[[list[DocumentLink], str], DocumentLink]
 FilenameBuilder = Callable[[str, str], str]
+
+
+class ApproximateMatchWarning(UserWarning):
+    """Signale qu'un résultat exact a été préféré à des résultats partiels."""
 
 
 def document_links(
@@ -70,7 +75,7 @@ def select_unique_match(
     missing_label: str,
     multiple_label: str,
 ) -> DocumentLink:
-    """Retourne l'unique titre contenant ``query`` après normalisation."""
+    """Retourne le meilleur titre correspondant à ``query`` après normalisation."""
     wanted = normalized(query)
     matches = [item for item in links if wanted in normalized(item[0])]
 
@@ -78,6 +83,21 @@ def select_unique_match(
         return matches[0]
     if not matches:
         raise RuntimeError(f"{missing_label} not found: {query}")
+
+    exact_matches = [item for item in matches if normalized(item[0]) == wanted]
+    if len(exact_matches) == 1:
+        approximate_matches = [item for item in matches if item != exact_matches[0]]
+        warnings.warn(
+            "An exact fund-name match was selected, but the name also matches "
+            f"{len(approximate_matches)} other document(s) approximately:\n"
+            + "\n".join(
+                f"- {title}: {url}" for title, url in approximate_matches
+            ),
+            ApproximateMatchWarning,
+            stacklevel=2,
+        )
+        return exact_matches[0]
+
     raise RuntimeError(
         f"The name matches multiple {multiple_label}:\n"
         + "\n".join(f"- {title}: {url}" for title, url in matches)

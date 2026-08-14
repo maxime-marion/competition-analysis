@@ -50,6 +50,10 @@ def selections_from_fund_fields(
                     ),
                     "",
                 ).strip()
+                document_variant = st.session_state.get(
+                    channel_state_key(channel_key, f"document-variant-{identifier}"),
+                    insurer.document_variants[0] if insurer.document_variants else None,
+                )
                 selections.append(
                     FundSelection(
                         f"{identifier}-{index}",
@@ -57,6 +61,7 @@ def selections_from_fund_fields(
                         insurer,
                         fund,
                         document_url or None,
+                        document_variant,
                     )
                 )
     return selections
@@ -82,6 +87,10 @@ def initialize_fund_fields(
         st.session_state[
             channel_state_key(channel_key, f"document-url-{identifier}-0")
         ] = ""
+        if insurer.document_variants:
+            st.session_state[
+                channel_state_key(channel_key, f"document-variant-{identifier}")
+            ] = insurer.document_variants[0]
     st.session_state[initialized_key] = True
 
 
@@ -194,6 +203,20 @@ def render_fund_fields(
         "Enter fund names and, optionally, a direct document URL. When provided, the "
         "direct URL is used instead of searching the catalogue by fund name."
     )
+    for identifier, insurer in sorted(
+        entities.items(), key=lambda item: item[1].label.casefold()
+    ):
+        if insurer.document_variants:
+            st.selectbox(
+                insurer.document_variant_label,
+                insurer.document_variants,
+                key=channel_state_key(
+                    channel_key, f"document-variant-{identifier}"
+                ),
+                on_change=clear_channel_results,
+                args=(channel_key,),
+                help=f"Applied to every {insurer.label} fund in this analysis.",
+            )
     insurers = sorted(entities.items(), key=lambda item: item[1].label.casefold())
     fund_columns = st.columns(len(insurers))
     for column, (identifier, insurer) in zip(fund_columns, insurers):
@@ -304,6 +327,29 @@ def result_row(
         return row
     holding_period = extraction["recommended_holding_period_years"]
     reduction_in_yield = extraction["reduction_in_yield_percent"]
+    extracted_source_count = sum(
+        value is not None
+        for value in (
+            extraction["version_date"],
+            holding_period,
+            reduction_in_yield,
+            extraction["management_fees_percent"],
+            extraction["transaction_fees_percent"],
+        )
+    )
+    if result.highlight_error:
+        status = (
+            f"Information extracted; highlighting unavailable: {result.highlight_error}"
+        )
+    elif result.highlighted_count < extracted_source_count:
+        status = (
+            "Information extracted; highlighting partial "
+            f"({result.highlighted_count}/{extracted_source_count})"
+        )
+    else:
+        status = (
+            f"Complete — {result.highlighted_count}/{extracted_source_count} highlighted"
+        )
     row.update(
         {
             "Version date": (
@@ -328,11 +374,7 @@ def result_row(
                 or "No transaction fees found"
             ),
             "Confidence": extraction["confidence"] or "not specified",
-            "Status": (
-                f"Information extracted; highlighting unavailable: {result.highlight_error}"
-                if result.highlight_error
-                else "Complete"
-            ),
+            "Status": status,
         }
     )
     return row
@@ -376,6 +418,9 @@ def render_analysis_results(
         if result.error:
             insurer = entities[result.identifier]
             st.error(f"{insurer.label} — {result.fund} : {result.error}")
+        elif result.warning:
+            insurer = entities[result.identifier]
+            st.warning(f"{insurer.label} — {result.fund}: {result.warning}")
 
     original_column, highlighted_column = st.columns(2)
     original_column.caption("Original document")

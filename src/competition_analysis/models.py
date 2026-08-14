@@ -49,6 +49,7 @@ class FundSelection:
     insurer: Insurer
     fund: str
     document_url: str | None = None
+    document_variant: str | None = None
 
 
 @dataclass(frozen=True)
@@ -63,4 +64,5 @@ class ExtractionResult:
     highlighted_content: bytes | None = None
     highlighted_count: int = 0
     error: str | None = None
+    warning: str | None = None
     highlight_error: str | None = None

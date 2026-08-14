@@ -1,6 +1,10 @@
 import unittest
 
-from competition_analysis.downloaders.ag import BANK_CATALOGUE_URL, BROKER_CATALOGUE_URL
+from competition_analysis.downloaders.ag import (
+    BANK_CATALOGUE_URL,
+    BROKER_CATALOGUE_URL,
+    KID_PLANS,
+)
 from competition_analysis.entities import BANK_ENTITIES, BROKER_ENTITIES
 from competition_analysis.downloaders.kbc import PAGE_URL as KBC_PAGE_URL
 from competition_analysis.streamlit_ui import channel_state_key
@@ -9,6 +13,7 @@ from competition_analysis.streamlit_ui import channel_state_key
 class ChannelConfigurationTests(unittest.TestCase):
     def test_bank_ag_uses_bnppf_catalogue(self):
         self.assertEqual(BANK_ENTITIES["ag"].source_url, BANK_CATALOGUE_URL)
+        self.assertEqual(BANK_ENTITIES["ag"].document_variants, KID_PLANS)
 
     def test_bank_channel_includes_kbc_kid_catalogue(self):
         self.assertEqual(BANK_ENTITIES["kbc"].label, "KBC")
@@ -17,6 +22,7 @@ class ChannelConfigurationTests(unittest.TestCase):
 
     def test_broker_ag_uses_broker_catalogue(self):
         self.assertEqual(BROKER_ENTITIES["ag"].source_url, BROKER_CATALOGUE_URL)
+        self.assertEqual(BROKER_ENTITIES["ag"].document_variants, ())
 
     def test_channel_keys_are_isolated(self):
         self.assertEqual(

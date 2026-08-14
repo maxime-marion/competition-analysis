@@ -1,6 +1,11 @@
 import unittest
+import warnings
 
-from competition_analysis.download_common import pdf_filename_from_title, select_unique_match
+from competition_analysis.download_common import (
+    ApproximateMatchWarning,
+    pdf_filename_from_title,
+    select_unique_match,
+)
 
 
 class PdfFilenameTests(unittest.TestCase):
@@ -26,13 +31,28 @@ class SelectUniqueMatchTests(unittest.TestCase):
             multiple_label="documents",
         )
 
-    def test_exact_match_does_not_hide_partial_match(self):
+    def test_exact_match_is_selected_and_partial_match_is_reported(self):
         links = [
             ("Global Equity Fund", "https://example.com/exact.pdf"),
             (
                 "Global Equity Fund — Invest 23",
                 "https://example.com/extended.pdf",
             ),
+        ]
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            selected = self.select(links, "Global Equity Fund")
+
+        self.assertEqual(selected, links[0])
+        self.assertEqual(len(caught), 1)
+        self.assertTrue(issubclass(caught[0].category, ApproximateMatchWarning))
+        self.assertIn("Global Equity Fund — Invest 23", str(caught[0].message))
+
+    def test_multiple_partial_matches_remain_ambiguous(self):
+        links = [
+            ("Global Equity Fund A", "https://example.com/a.pdf"),
+            ("Global Equity Fund B", "https://example.com/b.pdf"),
         ]
 
         with self.assertRaisesRegex(RuntimeError, "matches multiple documents"):
