@@ -30,8 +30,8 @@ class DirectDocumentUrlTests(unittest.TestCase):
             destination.write_bytes(b"%PDF-direct")
             return destination
 
-        with patch("competition_analysis.document_processing.create_session"), patch(
-            "competition_analysis.document_processing.download_pdf", side_effect=write_pdf
+        with patch("competition_analysis.document_fetching.create_session"), patch(
+            "competition_analysis.document_fetching.download_pdf", side_effect=write_pdf
         ) as direct_download:
             filename, content = fetch_pdf(
                 insurer,
