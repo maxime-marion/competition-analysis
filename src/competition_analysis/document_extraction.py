@@ -17,6 +17,13 @@ from competition_analysis.models import (
 
 
 DOCUMENT_EXTRACTION_MODEL = "gpt-5-mini"
+REQUIRED_EXTRACTION_FIELDS = (
+    "version_date",
+    "recommended_holding_period_years",
+    "reduction_in_yield_percent",
+    "management_fees_percent",
+    "transaction_fees_percent",
+)
 DOCUMENT_EXTRACTION_PROMPT = """Tu analyses un document d'information financière
 afin d'en extraire des indicateurs comparables et vérifiables.
 
@@ -191,6 +198,13 @@ def parse_extraction_response(response_text: str) -> DocumentExtraction:
 
 
 parse_version_date_response = parse_extraction_response
+
+
+def missing_extraction_fields(extraction: DocumentExtraction) -> tuple[str, ...]:
+    """Retourne les indicateurs obligatoires absents d'une extraction."""
+    return tuple(
+        field for field in REQUIRED_EXTRACTION_FIELDS if extraction[field] is None
+    )
 
 
 def extract_document_information(content: bytes, client: OpenAI) -> DocumentExtraction:

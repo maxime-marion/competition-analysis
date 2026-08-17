@@ -1,7 +1,7 @@
-entity,fund name,document URL
-Allianz,Document d’informations clés Allianz ActiveInvest,
-AG,AG Life Optitrack Equities,
-Vivium,Euro Corporate SRI Bonds,
-Athora,Profilife - Athora DNCA Invest Beyd Semperosa A,
-Baloise,Global Equity Fund,
-NN,NN Blackrock Global Allocation Fund,
+entity,fund name,AG fund,document URL
+Allianz,Document d’informations clés Allianz ActiveInvest,AG Life Optitrack Equities,
+AG,AG Life Optitrack Equities,,
+Vivium,Euro Corporate SRI Bonds,AG Life Optitrack Defensive,
+Athora,Profilife - Athora DNCA Invest Beyd Semperosa A,AG Life Optitrack Defensive,
+Baloise,Global Equity Fund,AG Life Optitrack Equities,
+NN,NN Blackrock Global Allocation Fund,AG Life Optitrack Defensive,

@@ -40,6 +40,15 @@ class FundCsvTests(unittest.TestCase):
             {selection.identifier for selection in selections}, {"ag", "belfius", "kbc"}
         )
 
+    def test_accepts_an_optional_ag_comparison_fund(self):
+        selections, errors = parse_fund_csv(
+            b"entity,fund name,AG fund\nBelfius,My competitor fund,AG Life Defensive\n",
+            BANK_ENTITIES,
+        )
+
+        self.assertEqual(errors, [])
+        self.assertEqual(selections[0].comparison_ag_fund, "AG Life Defensive")
+
 
 if __name__ == "__main__":
     unittest.main()

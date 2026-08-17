@@ -50,6 +50,18 @@ class FundSelection:
     fund: str
     document_url: str | None = None
     document_variant: str | None = None
+    comparison_ag_fund: str | None = None
+
+
+@dataclass(frozen=True)
+class RetrievalResult:
+    """Résultat du téléchargement d'un document, succès comme échec."""
+
+    selection: FundSelection
+    filename: str | None = None
+    content: bytes | None = None
+    error: str | None = None
+    warning: str | None = None
 
 
 @dataclass(frozen=True)
@@ -58,11 +70,13 @@ class ExtractionResult:
 
     identifier: str
     fund: str
+    comparison_ag_fund: str | None = None
     filename: str | None = None
     content: bytes | None = None
     extraction: DocumentExtraction | None = None
     highlighted_content: bytes | None = None
     highlighted_count: int = 0
+    extraction_attempts: int = 0
     error: str | None = None
     warning: str | None = None
     highlight_error: str | None = None

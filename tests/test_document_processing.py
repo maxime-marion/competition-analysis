@@ -8,6 +8,7 @@ import pymupdf
 
 from competition_analysis.document_processing import (
     create_highlighted_pdf,
+    extract_retrieved_document,
     fetch_pdf,
     format_percentage,
     fuzzy_word_rectangles,
@@ -17,7 +18,7 @@ from competition_analysis.document_processing import (
 )
 from competition_analysis.download_common import ApproximateMatchWarning
 from competition_analysis.entities import Insurer
-from competition_analysis.models import FundSelection
+from competition_analysis.models import FundSelection, RetrievalResult
 
 
 class DirectDocumentUrlTests(unittest.TestCase):
@@ -107,6 +108,60 @@ class MatchWarningTests(unittest.TestCase):
         self.assertIsNone(result.error)
         self.assertEqual(result.filename, "exact.pdf")
         self.assertEqual(result.warning, "Another approximate match")
+
+
+class ExtractionRetryTests(unittest.TestCase):
+    def test_retries_the_current_fund_when_a_required_value_is_missing(self):
+        insurer = Insurer("Test", "Default", "https://example.com/catalogue", Mock())
+        selection = FundSelection("test-0", "test", insurer, "Exact Fund")
+        incomplete = {
+            "version_date": None,
+            "display_date": None,
+            "confidence": "low",
+            "recommended_holding_period_years": 5,
+            "reduction_in_yield_percent": 1.25,
+            "management_fees_percent": 0.8,
+            "transaction_fees_percent": 0.1,
+            "source_highlights": [],
+        }
+        complete = {**incomplete, "version_date": "2026-01-01"}
+
+        with patch(
+            "competition_analysis.document_processing.extract_document_information",
+            side_effect=[incomplete, complete],
+        ) as extract:
+            result = extract_retrieved_document(
+                RetrievalResult(selection, "exact.pdf", b"%PDF-exact"), Mock()
+            )
+
+        self.assertEqual(extract.call_count, 2)
+        self.assertEqual(result.extraction, complete)
+        self.assertEqual(result.extraction_attempts, 2)
+
+    def test_does_not_retry_a_complete_extraction(self):
+        insurer = Insurer("Test", "Default", "https://example.com/catalogue", Mock())
+        selection = FundSelection("test-0", "test", insurer, "Exact Fund")
+        complete = {
+            "version_date": "2026-01-01",
+            "display_date": None,
+            "confidence": "high",
+            "recommended_holding_period_years": 5,
+            "reduction_in_yield_percent": 1.25,
+            "management_fees_percent": 0.8,
+            "transaction_fees_percent": 0.1,
+            "source_highlights": [],
+        }
+
+        with patch(
+            "competition_analysis.document_processing.extract_document_information",
+            return_value=complete,
+        ) as extract:
+            result = extract_retrieved_document(
+                RetrievalResult(selection, "exact.pdf", b"%PDF-exact"), Mock()
+            )
+
+        extract.assert_called_once()
+        self.assertEqual(result.extraction_attempts, 1)
 
 
 class ExtractionResponseTests(unittest.TestCase):

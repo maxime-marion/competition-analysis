@@ -25,6 +25,11 @@ CSV_DOCUMENT_URL_HEADERS = (
     "documentlink",
     "url",
 )
+CSV_COMPARISON_AG_FUND_HEADERS = (
+    "agfund",
+    "agreferencefund",
+    "comparisonagfund",
+)
 
 
 def valid_source_url(value: str) -> bool:
@@ -66,6 +71,14 @@ def parse_fund_csv(
         (headers[header] for header in CSV_DOCUMENT_URL_HEADERS if header in headers),
         None,
     )
+    comparison_ag_fund_header = next(
+        (
+            headers[header]
+            for header in CSV_COMPARISON_AG_FUND_HEADERS
+            if header in headers
+        ),
+        None,
+    )
     if not entity_header or not fund_header:
         return [], [
             "The CSV file must contain the “entity” and “fund name” columns "
@@ -87,7 +100,12 @@ def parse_fund_csv(
             if document_url_header
             else ""
         )
-        if not entity and not fund and not document_url:
+        comparison_ag_fund = (
+            (row.get(comparison_ag_fund_header) or "").strip()
+            if comparison_ag_fund_header
+            else ""
+        )
+        if not entity and not fund and not document_url and not comparison_ag_fund:
             continue
         if not entity or not fund:
             errors.append(f"Row {row_number}: entity and fund name are required.")
@@ -110,6 +128,7 @@ def parse_fund_csv(
                 insurer,
                 fund,
                 document_url or None,
+                comparison_ag_fund=comparison_ag_fund or None,
             )
         )
 

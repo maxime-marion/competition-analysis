@@ -193,16 +193,17 @@ directement sous le tableau des résultats.
 Dans chaque onglet, il est aussi possible d'importer un fichier CSV. Il doit
 contenir une ligne par fonds, avec les colonnes `entity` et `fund name` (ou
 `name of the fund`). Une colonne `document URL` peut être ajoutée pour fournir
-directement le PDF :
+directement le PDF. Une colonne facultative `AG fund` indique le fonds AG de
+référence auquel le fonds concurrent est comparé :
 
 ```csv
-entity,fund name,document URL
-Allianz,Document d’informations clés Allianz ActiveInvest,
-AG,AG Life Optitrack Equities,https://example.org/documents/ag-optitrack.pdf
-Vivium,Euro Corporate SRI Bonds,
-AG,AG Life Optitrack Defensive,
-Baloise,Global Equity Fund,
-NN,NN Blackrock Global Allocation Fund,
+entity,fund name,AG fund,document URL
+Allianz,Document d’informations clés Allianz ActiveInvest,AG Life Optitrack Equities,
+AG,AG Life Optitrack Equities,,https://example.org/documents/ag-optitrack.pdf
+Vivium,Euro Corporate SRI Bonds,AG Life Optitrack Defensive,
+AG,AG Life Optitrack Defensive,,
+Baloise,Global Equity Fund,AG Life Optitrack Equities,
+NN,NN Blackrock Global Allocation Fund,AG Life Optitrack Defensive,
 ```
 
 Le fichier est validé par rapport à l'onglet actif : `AG`, `Allianz`, `Vivium`,

@@ -7,16 +7,18 @@ import os
 from pathlib import Path
 
 from openai import OpenAI
+import pandas as pd
 import streamlit as st
 
 from competition_analysis.document_processing import (
+    extract_retrieved_document,
     format_number,
     format_percentage,
     format_version_date,
-    process_selection,
+    retrieve_selection,
 )
 from competition_analysis.entities import BROKER_ENTITIES, Insurer
-from competition_analysis.models import ExtractionResult, FundSelection
+from competition_analysis.models import ExtractionResult, FundSelection, RetrievalResult
 from competition_analysis.selection_import import parse_fund_csv, valid_source_url
 
 
@@ -62,6 +64,14 @@ def selections_from_fund_fields(
                         fund,
                         document_url or None,
                         document_variant,
+                        st.session_state.get(
+                            channel_state_key(
+                                channel_key,
+                                f"comparison-ag-fund-{identifier}-{index}",
+                            ),
+                            "",
+                        ).strip()
+                        or None,
                     )
                 )
     return selections
@@ -69,6 +79,7 @@ def selections_from_fund_fields(
 
 def clear_channel_results(channel_key: str) -> None:
     """Évite d'afficher des résultats qui ne correspondent plus aux champs."""
+    st.session_state.pop(channel_state_key(channel_key, "retrieval-results"), None)
     st.session_state.pop(channel_state_key(channel_key, "extraction-results"), None)
 
 
@@ -145,7 +156,8 @@ def sync_uploaded_csv(
         key=channel_state_key(channel_key, "csv-upload"),
         help=(
             "Required columns: entity and fund name. The optional document URL column "
-            "bypasses the search by fund name. Supported entities in this channel: "
+            "bypasses the search by fund name. The optional AG fund column identifies "
+            "the AG fund used for comparison. Supported entities in this channel: "
             + ", ".join(entity.label for entity in entities.values())
             + "."
         ),
@@ -166,12 +178,16 @@ def sync_uploaded_csv(
     if st.session_state.get(imported_signature_key) == csv_signature:
         return []
 
-    imported_funds: dict[str, list[tuple[str, str]]] = {
+    imported_funds: dict[str, list[tuple[str, str, str]]] = {
         identifier: [] for identifier in entities
     }
     for selection in imported_selections:
         imported_funds[selection.identifier].append(
-            (selection.fund, selection.document_url or "")
+            (
+                selection.fund,
+                selection.document_url or "",
+                selection.comparison_ag_fund or "",
+            )
         )
     for identifier, funds in imported_funds.items():
         fund_count_key = channel_state_key(channel_key, f"fund-count-{identifier}")
@@ -184,6 +200,11 @@ def sync_uploaded_csv(
             st.session_state[
                 channel_state_key(channel_key, f"document-url-{identifier}-{index}")
             ] = funds[index][1] if index < len(funds) else ""
+            st.session_state[
+                channel_state_key(
+                    channel_key, f"comparison-ag-fund-{identifier}-{index}"
+                )
+            ] = funds[index][2] if index < len(funds) else ""
         st.session_state[fund_count_key] = field_count
 
     st.session_state[imported_signature_key] = csv_signature
@@ -247,6 +268,18 @@ def render_fund_fields(
                     args=(channel_key,),
                     label_visibility="collapsed",
                 )
+                if identifier != "ag" and "ag" in entities:
+                    st.text_input(
+                        f"{insurer.label} — AG fund used for comparison {field_index + 1}",
+                        key=channel_state_key(
+                            channel_key,
+                            f"comparison-ag-fund-{identifier}-{field_index}",
+                        ),
+                        placeholder="AG fund used for comparison (optional)",
+                        on_change=clear_channel_results,
+                        args=(channel_key,),
+                        label_visibility="collapsed",
+                    )
             if st.button(
                 f"Add {insurer.label} fund",
                 key=channel_state_key(channel_key, f"add-fund-{identifier}"),
@@ -262,53 +295,82 @@ def render_fund_fields(
         for selection in selections
         if selection.document_url and not valid_source_url(selection.document_url)
     ]
-    for error in document_url_errors:
+    selected_ag_funds = {
+        selection.fund.casefold()
+        for selection in selections
+        if selection.identifier == "ag"
+    }
+    comparison_errors = [
+        f"The AG comparison fund for {selection.insurer.label} — {selection.fund} "
+        "must exactly match an AG fund selected in this analysis."
+        for selection in selections
+        if (
+            selection.identifier != "ag"
+            and selection.comparison_ag_fund
+            and selection.comparison_ag_fund.casefold() not in selected_ag_funds
+        )
+    ]
+    errors = document_url_errors + comparison_errors
+    for error in errors:
         st.error(error)
-    return selections, document_url_errors
+    return selections, errors
+
+
+def retrieve_selections(
+    selections: list[FundSelection], source_urls: dict[str, str]
+) -> dict[str, RetrievalResult]:
+    """Télécharge toutes les sélections avant toute extraction par IA."""
+    results: dict[str, RetrievalResult] = {}
+    progress = st.progress(0, text="Preparing retrieval…")
+    for index, selection in enumerate(selections):
+        progress.progress(
+            index / len(selections),
+            text=f"{selection.insurer.label}: retrieving document…",
+        )
+        results[selection.key] = retrieve_selection(
+            selection, source_urls[selection.identifier]
+        )
+    progress.progress(1.0, text="Document retrieval complete.")
+    return results
 
 
 def extract_selections(
-    selections: list[FundSelection], source_urls: dict[str, str], api_key: str
+    retrieved_documents: dict[str, RetrievalResult], api_key: str
 ) -> dict[str, ExtractionResult]:
-    """Traite toutes les sélections et traduit leur progression pour Streamlit."""
-    results: dict[str, ExtractionResult] = {}
+    """Extrait et surligne les documents déjà récupérés."""
     progress = st.progress(0, text="Preparing extraction…")
     client = OpenAI(api_key=api_key)
-    stages_per_selection = 3
-    total_stages = len(selections) * stages_per_selection
-    stage_labels = (
-        "downloading document…",
-        "extracting information…",
-        "highlighting PDF…",
-    )
+    results: dict[str, ExtractionResult] = {}
+    total_stages = len(retrieved_documents) * 2
+    for index, (selection_key, retrieved) in enumerate(retrieved_documents.items()):
+        stage_start = index * 2
 
-    for index, selection in enumerate(selections):
-        stage_start = index * stages_per_selection
-
-        def report_progress(stage: int) -> None:
+        def report_progress(stage: int, *, retrieved=retrieved) -> None:
+            stage_label = ("extracting information…", "highlighting PDF…")[stage]
             progress.progress(
                 (stage_start + stage) / total_stages,
-                text=f"{selection.insurer.label}: {stage_labels[stage]}",
+                text=f"{retrieved.selection.insurer.label}: {stage_label}",
             )
 
-        results[selection.key] = process_selection(
-            selection,
-            source_urls[selection.identifier],
-            client,
-            report_progress,
+        results[selection_key] = extract_retrieved_document(
+            retrieved, client, report_progress
         )
 
-    progress.progress(1.0, text="Download, extraction, and highlighting complete.")
+    progress.progress(1.0, text="Extraction and highlighting complete.")
     return results
 
 
 def result_row(
-    result: ExtractionResult, entities: dict[str, Insurer] | None = None
+    result: ExtractionResult,
+    entities: dict[str, Insurer] | None = None,
+    is_comparison_ag_fund: bool = False,
 ) -> dict[str, str]:
     """Convertit un résultat structuré en ligne de tableau."""
     entities = BROKER_ENTITIES if entities is None else entities
     row = {
-        "Entity": entities[result.identifier].label,
+        "Entity": (
+            "↳ AG" if is_comparison_ag_fund else entities[result.identifier].label
+        ),
         "Fund": result.fund,
         "Version date": "—",
         "Recommended holding period": "—",
@@ -350,6 +412,8 @@ def result_row(
         status = (
             f"Complete — {result.highlighted_count}/{extracted_source_count} highlighted"
         )
+    if result.extraction_attempts > 1:
+        status = f"Retried extraction once; {status}"
     row.update(
         {
             "Version date": (
@@ -380,6 +444,66 @@ def result_row(
     return row
 
 
+def comparison_result_rows(
+    results: dict[str, ExtractionResult], entities: dict[str, Insurer]
+) -> list[dict[str, str]]:
+    """Présente chaque concurrent, suivi du fonds AG auquel il est comparé."""
+    ag_results = {
+        result.fund.casefold(): result
+        for result in results.values()
+        if result.identifier == "ag"
+    }
+    rows: list[dict[str, str]] = []
+    for result in results.values():
+        if result.identifier == "ag":
+            continue
+        rows.append(result_row(result, entities))
+        if result.comparison_ag_fund:
+            ag_result = ag_results.get(result.comparison_ag_fund.casefold())
+            if ag_result:
+                rows.append(result_row(ag_result, entities, is_comparison_ag_fund=True))
+    return rows
+
+
+def comparison_result_row_style(row: pd.Series) -> list[str]:
+    """Colore les lignes AG et concurrentes pour rendre chaque paire lisible."""
+    color = "background-color: #e8f5e9; color: #1b5e20"  # Green for AG.
+    if row["Entity"] != "↳ AG":
+        color = "background-color: #e8f1ff; color: #0d47a1"  # Blue for competitors.
+    return [color] * len(row)
+
+
+def render_retrieval_results(
+    channel_key: str,
+    entities: dict[str, Insurer],
+    results: dict[str, RetrievalResult] | None,
+) -> None:
+    """Affiche les documents récupérés et les erreurs à corriger avant l'IA."""
+    if not results:
+        return
+
+    with st.expander("Retrieved document details", expanded=False):
+        for selection_key, result in results.items():
+            insurer = entities[result.selection.identifier]
+            label = f"{insurer.label} — {result.selection.fund}"
+            if result.error:
+                st.error(f"{label}: {result.error}")
+                continue
+            st.success(f"{label}: {result.filename} retrieved.")
+            if result.warning:
+                st.warning(f"{label}: {result.warning}")
+            if result.filename and result.content is not None:
+                st.download_button(
+                    f"Retrieved PDF — {label}",
+                    data=result.content,
+                    file_name=result.filename,
+                    mime="application/pdf",
+                    key=channel_state_key(
+                        channel_key, f"download-retrieved-{selection_key}"
+                    ),
+                )
+
+
 def render_analysis_results(
     channel_key: str,
     entities: dict[str, Insurer],
@@ -390,8 +514,9 @@ def render_analysis_results(
         st.info("No bulk extraction has been run yet.")
         return
 
+    result_dataframe = pd.DataFrame(comparison_result_rows(results, entities))
     st.dataframe(
-        [result_row(result, entities) for result in results.values()],
+        result_dataframe.style.apply(comparison_result_row_style, axis=1),
         use_container_width=True,
         hide_index=True,
         column_config={
@@ -468,8 +593,8 @@ def render_analysis_tab(
     selections, document_url_errors = render_fund_fields(channel_key, entities)
 
     if st.button(
-        "Retrieve and extract information (AI)",
-        key=channel_state_key(channel_key, "extract"),
+        "Retrieve documents",
+        key=channel_state_key(channel_key, "retrieve"),
         type="primary",
         use_container_width=True,
         disabled=(
@@ -479,6 +604,30 @@ def render_analysis_tab(
             or bool(document_url_errors)
         ),
     ):
+        st.session_state[channel_state_key(channel_key, "retrieval-results")] = (
+            retrieve_selections(selections, source_urls)
+        )
+        st.session_state.pop(channel_state_key(channel_key, "extraction-results"), None)
+
+    retrieval_results = st.session_state.get(
+        channel_state_key(channel_key, "retrieval-results")
+    )
+    retrieval_ready = bool(retrieval_results) and all(
+        result.error is None and result.content is not None
+        for result in retrieval_results.values()
+    )
+    if retrieval_results and not retrieval_ready:
+        st.info("Correct the failed fund names or URLs, then retrieve the documents again.")
+
+    render_retrieval_results(channel_key, entities, retrieval_results)
+
+    if st.button(
+        "Extract and highlight information (AI)",
+        key=channel_state_key(channel_key, "extract"),
+        type="primary",
+        use_container_width=True,
+        disabled=not retrieval_ready,
+    ):
         api_key = configured_openai_key()
         if not api_key:
             st.warning(
@@ -487,7 +636,7 @@ def render_analysis_tab(
         else:
             st.session_state[
                 channel_state_key(channel_key, "extraction-results")
-            ] = extract_selections(selections, source_urls, api_key)
+            ] = extract_selections(retrieval_results, api_key)
 
     render_analysis_results(
         channel_key,
